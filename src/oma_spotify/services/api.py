@@ -16,18 +16,28 @@ from oma_spotify.services.erros import de_status
 from oma_spotify.services.modelos import Dispositivo, ErroSpotify, Item, Player
 
 BASE = "https://api.spotify.com/v1"
-TIPOS_BUSCA = ("track", "album", "artist", "playlist")
+TIPOS_BUSCA = ("track", "album", "artist", "playlist", "show")
 
 
 def _nomes(lst) -> str:
     return ", ".join(a.get("name", "") for a in (lst or []) if a)
 
 
+def _capa(o: dict) -> str:
+    """URL da menor imagem com pelo menos 160 px (ou a primeira)."""
+    imgs = o.get("images") or (o.get("album") or {}).get("images") or (o.get("show") or {}).get("images") or []
+    imgs = [i for i in imgs if isinstance(i, dict) and i.get("url")]
+    bons = [i for i in imgs if (i.get("width") or 0) >= 160]
+    if bons:
+        return min(bons, key=lambda i: i["width"])["url"]
+    return imgs[0]["url"] if imgs else ""
+
+
 def item_de(o: dict | None, meu_id: str = "") -> Item | None:
     if not o or not o.get("uri"):
         return None
     t = o.get("type", "track")
-    base = dict(uri=o["uri"], tipo=t, nome=o.get("name", "(sem nome)"), id=o.get("id", ""))
+    base = dict(uri=o["uri"], tipo=t, nome=o.get("name", "(sem nome)"), id=o.get("id", ""), capa=_capa(o))
     if t == "track":
         return Item(**base, sub=_nomes(o.get("artists")), extra=(o.get("album") or {}).get("name", ""), dur_ms=o.get("duration_ms", 0))
     if t == "episode":
@@ -214,6 +224,9 @@ class ClienteSpotify:
             if i:
                 itens.append(i)
         return itens
+
+    def episodios_do_show(self, sid: str) -> list[Item]:
+        return [i for i in (item_de(x) for x in self._paginas(f"/shows/{sid}/episodes", {}, maximo=100)) if i]
 
     def albuns_do_artista(self, aid: str) -> list[Item]:
         r = self._paginas(f"/artists/{aid}/albums", {"include_groups": "album,single"}, maximo=50)

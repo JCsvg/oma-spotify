@@ -163,6 +163,10 @@ class ClienteFalso:
     def faixas_do_album(self, aid: str, nome: str = "") -> list[Item]:
         return [f for f in self.faixas if f.extra == next(a.nome for a in ALBUNS if a.id == aid)]
 
+    def episodios_do_show(self, sid: str) -> list[Item]:
+        return [Item("spotify:episode:e1", "episode", "Episódio 1 (exemplo)", "Conversa de Exemplo", dur_ms=1_800_000, id="e1"),
+                Item("spotify:episode:e2", "episode", "Episódio 2 (exemplo)", "Conversa de Exemplo", dur_ms=1_500_000, id="e2")]
+
     def albuns_do_artista(self, aid: str) -> list[Item]:
         nome = next(a.nome for a in ARTISTAS if a.id == aid)
         return [a for a in ALBUNS if a.sub == nome]
@@ -181,7 +185,8 @@ class ClienteFalso:
         return {"track": [f for f in self.faixas if q in f.nome.lower() or q in f.sub.lower()],
                 "album": [a for a in ALBUNS if q in a.nome.lower() or q in a.sub.lower()],
                 "artist": [a for a in ARTISTAS if q in a.nome.lower()],
-                "playlist": [p for p in self.playlists() if q in p.nome.lower()]}
+                "playlist": [p for p in self.playlists() if q in p.nome.lower()],
+                "show": [p for p in self.podcasts() if q in p.nome.lower()]}
 
     def recentes(self) -> list[Item]:
         return list(reversed(self.faixas[:5]))
