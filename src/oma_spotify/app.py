@@ -20,6 +20,7 @@ from oma_spotify.config import Config
 from oma_spotify.estado import Estado
 from oma_spotify.services.api import ClienteSpotify
 from oma_spotify.services.auth import Armazem, Sessao
+from oma_spotify.services.diagnostico import HOST_SPOTIFY
 from oma_spotify.services.falso import ClienteFalso
 from oma_spotify.services.modelos import ErroSpotify, Item
 from oma_spotify.ui.abertura import Abertura
@@ -46,6 +47,18 @@ def abrir_spotify_do_pc() -> bool:
                          start_new_session=True)
         return True
     except OSError:
+        return False
+
+
+def copiar_para_area(texto: str) -> bool:
+    """wl-copy, se existir. False quando não deu para copiar de verdade."""
+    exe = shutil.which("wl-copy")
+    if not exe:
+        return False
+    try:
+        subprocess.run([exe], input=texto.encode(), timeout=3, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+        return True
+    except (OSError, subprocess.SubprocessError):
         return False
 
 
@@ -78,10 +91,14 @@ class OmaSpotifyApp(App[None]):
     #acoes-config Button { margin-bottom: 1; }
     #titulo-setup, #titulo-detalhe { text-style: bold; color: $accent; margin: 0 1 1 1; }
     #setup { padding: 1 2; }
+    #passos, #espera { height: auto; }
     #setup .passo { margin-top: 1; }
     #setup .linha { height: 3; }
     #setup .linha Button { margin-right: 1; }
     #redirect { background: $surface; padding: 0 1; color: $accent; text-style: bold; }
+    #status, #motivo, #link, #diag, #diag-config, #contagem { height: auto; }
+    #contagem { text-style: bold; color: $accent; margin: 1 0; }
+    #ajuda-texto { background: $surface; padding: 0 1; margin-top: 1; height: auto; }
     #status, #motivo { color: $warning; margin-top: 1; }
     """
     BINDINGS = [
@@ -105,7 +122,8 @@ class OmaSpotifyApp(App[None]):
 
     def __init__(self, cliente=None, demo: bool = False, estado: Estado | None = None, config: Config | None = None,
                  armazem: Armazem | None = None, abertura: bool = True, abridor=None, lancador=None,
-                 espera_dispositivo: float = 1.5) -> None:
+                 espera_dispositivo: float = 1.5, copiador=None, tempo_login: float = 180.0, tempo_ajuda: float = 15.0,
+                 url_rede: str | None = None) -> None:
         super().__init__()
         self.demo = demo
         self.estado = estado or Estado()
@@ -117,6 +135,9 @@ class OmaSpotifyApp(App[None]):
         self.abridor_navegador = abridor or webbrowser.open
         self.lancador = lancador or abrir_spotify_do_pc
         self.espera_dispositivo = espera_dispositivo
+        self.copiador = copiador or copiar_para_area
+        self.tempo_login, self.tempo_ajuda = tempo_login, tempo_ajuda
+        self.url_rede = url_rede or HOST_SPOTIFY
         self.paleta = tema.ler()
         self._aba_alvo, self._aba_alvo_em = "", 0.0
         self.pronto = False
@@ -200,6 +221,15 @@ class OmaSpotifyApp(App[None]):
         self.armazem.apagar()
         self.cliente, self.conectado = None, False
         self.pedir_login("Você saiu da conta.")
+
+    def copiar(self, texto: str) -> bool:
+        """Copia para a área de transferência. True só se foi com wl-copy (senão a tela mostra o texto)."""
+        ok = self.copiador(texto)
+        try:
+            self.copy_to_clipboard(texto)  # OSC 52, vale em muitos terminais
+        except Exception:
+            pass
+        return ok
 
     def abrir_link(self, url: str) -> None:
         try:

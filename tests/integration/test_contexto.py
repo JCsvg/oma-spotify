@@ -161,9 +161,9 @@ async def test_setup_por_teclado_e_login_pelo_fluxo_real_contra_servidor_falso(e
             await pilot.pause(0.6)
             assert isinstance(a.screen, TelaSetup)
             assert isinstance(a.focused, Input)
-            await pilot.press(*"abcdefghij0123456789", "enter")
+            await pilot.press(*"0123456789abcdef0123456789abcdef", "enter")
             assert await esperar(pilot, lambda: not isinstance(a.screen, TelaSetup), 6)
-            assert config.client_id == "abcdefghij0123456789"
+            assert config.client_id == "0123456789abcdef0123456789abcdef"
             assert armazem.logado() and a.conectado
     finally:
         auth.Sessao.__init__ = orig
@@ -206,7 +206,7 @@ async def test_config_opcoes_por_clique_e_teclado(estado, config, armazem):
 
 
 async def test_sair_da_conta_apaga_tokens_com_confirmacao(estado, config, armazem):
-    config.client_id = "abcdefghij0123456789"
+    config.client_id = "0123456789abcdef0123456789abcdef"
     armazem.gravar({"access_token": "a", "refresh_token": "r", "expira": 9e12})
     a = OmaSpotifyApp(cliente=ClienteFalso(), estado=estado, config=config, armazem=armazem, abertura=False)
     a.demo = False
@@ -226,3 +226,142 @@ async def test_sair_da_conta_apaga_tokens_com_confirmacao(estado, config, armaze
         await pilot.pause(0.5)
         assert not armazem.logado()
         assert isinstance(a.screen, TelaSetup)
+
+
+# ---------------------------------------------------------------- espera do login (0.1.1)
+async def _abrir_espera(a, pilot, porta):
+    await pilot.pause(0.6)
+    assert isinstance(a.screen, TelaSetup)
+    a.screen.query_one("#client-id", Input).value = "0123456789abcdef0123456789abcdef"
+    await pilot.click("#entrar")
+    await pilot.pause(0.4)
+    assert a.screen.login is not None and a.screen.query_one("#espera").display
+
+
+def _app(estado, config, armazem, porta, abertos, copias, copiou=True, tempo=30.0, ajuda=15.0):
+    config.porta = porta
+    return OmaSpotifyApp(estado=estado, config=config, armazem=armazem, abertura=False, abridor=abertos.append,
+                         copiador=lambda t: copias.append(t) or copiou, tempo_login=tempo, tempo_ajuda=ajuda)
+
+
+async def test_espera_mostra_contagem_regressiva_e_botoes(estado, config, armazem):
+    from tests.unit.test_auth import _porta_livre
+    abertos, copias = [], []
+    a = _app(estado, config, armazem, _porta_livre(), abertos, copias, tempo=10)
+    async with a.run_test(size=TAM) as pilot:
+        await _abrir_espera(a, pilot, 0)
+        tx = lambda: str(a.screen.query_one("#contagem").render())
+        assert "Esperando você autorizar no navegador (0:" in tx() and len(abertos) == 1
+        antes = tx()
+        await pilot.pause(1.3)
+        assert tx() != antes
+        await pilot.click("#reabrir")
+        assert len(abertos) == 2 and abertos[1] == abertos[0]
+        await pilot.click("#cancelar")
+        await pilot.pause(0.5)
+
+
+async def test_copiar_link_e_mostrar_quando_nao_ha_wl_copy(estado, config, armazem):
+    from tests.unit.test_auth import _porta_livre
+    abertos, copias = [], []
+    a = _app(estado, config, armazem, _porta_livre(), abertos, copias, copiou=False)
+    async with a.run_test(size=TAM) as pilot:
+        await _abrir_espera(a, pilot, 0)
+        await pilot.click("#copiar-link")
+        await pilot.pause(0.2)
+        assert copias[-1] == abertos[0] and copias[-1].startswith("https://accounts.spotify.com/authorize?")
+        assert abertos[0] in str(a.screen.query_one("#link").render())
+        await pilot.press("u")  # tecla: copiar Redirect URI
+        assert copias[-1] == config.redirect
+        await pilot.press("x")
+        await pilot.pause(0.4)
+
+
+async def test_cancelar_por_clique_e_por_teclado_libera_a_porta(estado, config, armazem):
+    import socket
+    from tests.unit.test_auth import _porta_livre
+    for modo in ("clique", "tecla", "esc"):
+        porta = _porta_livre()
+        abertos, copias = [], []
+        cfg = type(config)(config.pasta)
+        a = _app(estado, cfg, armazem, porta, abertos, copias)
+        async with a.run_test(size=TAM) as pilot:
+            await _abrir_espera(a, pilot, porta)
+            if modo == "clique":
+                await pilot.click("#cancelar")
+            elif modo == "tecla":
+                await pilot.press("x")
+            else:
+                await pilot.press("escape")
+            await pilot.pause(0.6)
+            assert isinstance(a.screen, TelaSetup) and a.screen.login is None
+            assert a.screen.query_one("#passos").display
+            assert "cancelada" in str(a.screen.query_one("#status").render())
+            with socket.socket() as s:
+                s.bind(("127.0.0.1", porta))
+
+
+async def test_ajuda_de_erros_aparece_apos_15s_e_por_botao(estado, config, armazem):
+    from tests.unit.test_auth import _porta_livre
+    a = _app(estado, config, armazem, _porta_livre(), [], [], ajuda=1.0)
+    async with a.run_test(size=TAM) as pilot:
+        await _abrir_espera(a, pilot, 0)
+        ajuda = a.screen.query_one("#ajuda-texto")
+        assert not ajuda.display
+        assert await esperar(pilot, lambda: ajuda.display, 4)
+        txt = str(ajuda.render())
+        assert "Not matching configuration" in txt and config.redirect in txt and "User Management" in txt
+        assert "127.0.0.1" in txt and "32 caracteres" in txt and "SAVE" in txt
+        await pilot.click("#cancelar")
+        await pilot.pause(0.4)
+    b = _app(estado, config, armazem, _porta_livre(), [], [], ajuda=999)
+    async with b.run_test(size=TAM) as pilot:
+        await _abrir_espera(b, pilot, 0)
+        assert not b.screen.query_one("#ajuda-texto").display
+        await pilot.click("#ajuda-erros")
+        assert b.screen.query_one("#ajuda-texto").display
+        await pilot.press("x")
+        await pilot.pause(0.4)
+
+
+@pytest.mark.parametrize("valor,trecho", [("abc", "3 caracteres"), ("0123456789abcdef 123456789abcdef", "espaço"), ("z" * 32, "letras de a a f")])
+async def test_setup_valida_client_id_e_nao_inicia_login(estado, config, armazem, valor, trecho):
+    abertos = []
+    a = OmaSpotifyApp(estado=estado, config=config, armazem=armazem, abertura=False, abridor=abertos.append)
+    async with a.run_test(size=TAM) as pilot:
+        await pilot.pause(0.6)
+        a.screen.query_one("#client-id", Input).value = valor
+        await pilot.click("#entrar")
+        await pilot.pause(0.2)
+        assert trecho in str(a.screen.query_one("#status").render())
+        assert abertos == [] and a.screen.login is None and config.client_id == ""
+
+
+async def test_verificar_configuracao_no_setup_e_na_config(estado, config, armazem):
+    from tests.fake_api import ServidorFalso
+    from tests.unit.test_auth import _porta_livre
+    srv = ServidorFalso()
+    id32 = "0123456789abcdef0123456789abcdef"
+    config.porta = _porta_livre()
+    a = OmaSpotifyApp(estado=estado, config=config, armazem=armazem, abertura=False, url_rede=f"http://127.0.0.1:{srv.porta}/")
+    try:
+        async with a.run_test(size=TAM) as pilot:
+            await pilot.pause(0.6)
+            a.screen.query_one("#client-id", Input).value = id32
+            await pilot.click("#verificar")
+            assert await esperar(pilot, lambda: "Conexão" in str(a.screen.query_one("#diag").render()))
+            txt = str(a.screen.query_one("#diag").render())
+            assert id32 not in txt and "0123...cdef" in txt and config.redirect in txt and "ok" in txt
+            await pilot.press("escape", "escape")
+        # Configurações do app já conectado
+        config.client_id = id32
+        b = OmaSpotifyApp(cliente=ClienteFalso(), demo=True, estado=estado, config=config, armazem=armazem, abertura=False,
+                          url_rede=f"http://127.0.0.1:{srv.porta}/")
+        async with b.run_test(size=TAM) as pilot:
+            await pilot.press("9")
+            await pilot.pause(0.3)
+            await pilot.click("#verificar")
+            assert await esperar(pilot, lambda: "Conexão" in str(b.query_one("#diag-config").render()))
+            assert id32 not in str(b.query_one("#diag-config").render())
+    finally:
+        srv.parar()

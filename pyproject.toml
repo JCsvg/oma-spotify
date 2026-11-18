@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "oma-spotify"
-version = "0.1.0"
+version = "0.1.1"
 description = "Cliente de Spotify em TUI para quem tem Premium, para mouse e teclado"
 readme = "README.md"
 requires-python = ">=3.13"

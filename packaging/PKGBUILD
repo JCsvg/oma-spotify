@@ -5,7 +5,7 @@
 # nada do AUR, nada vendorizado. O HTTP usa a biblioteca padrão.
 
 pkgname=oma-spotify
-pkgver=0.1.0
+pkgver=0.1.1
 pkgrel=1
 pkgdesc="Cliente de Spotify em TUI para quem tem Premium, para mouse e teclado"
 arch=('any')

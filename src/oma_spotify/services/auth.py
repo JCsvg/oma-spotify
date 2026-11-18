@@ -10,6 +10,7 @@ import base64
 import hashlib
 import json
 import os
+import re
 import secrets
 import threading
 import time
@@ -92,6 +93,32 @@ class Armazem:
         return bool(self.ler().get("refresh_token"))
 
 
+def _erro_token(status: int, corpo: bytes, dados: dict) -> ErroSpotify:
+    """Mensagem específica conforme o `error` que o Spotify devolve (nunca inclui token)."""
+    try:
+        tipo = str(json.loads(corpo).get("error", ""))
+    except (ValueError, AttributeError):
+        tipo = ""
+    renovando = dados.get("grant_type") == "refresh_token"
+    redirect = dados.get("redirect_uri", "")
+    if tipo == "invalid_client":
+        msg = ("O Spotify não reconheceu o Client ID (invalid_client). Copie de novo em Settings do app no painel, "
+               "são 32 caracteres, sem espaços.")
+    elif tipo == "invalid_grant":
+        msg = ("A sessão foi revogada ou expirou (invalid_grant). Entre de novo." if renovando else
+               "O código de login expirou, já foi usado, ou o Redirect URI da troca não bate com o do pedido "
+               "(invalid_grant). Entre de novo.")
+    elif tipo == "invalid_request":
+        msg = "O Spotify recusou o pedido de login (invalid_request)."
+        if redirect:
+            msg += f" Confira se o Redirect URI no painel é exatamente {redirect}"
+    elif status in (400, 401):
+        msg = f"O Spotify recusou o login ({tipo or status})."
+    else:
+        return ErroSpotify(f"O Spotify respondeu com erro {status} no login.", status)
+    return ErroSpotify(msg, status, sem_login=True)
+
+
 def _post_token(url: str, dados: dict) -> dict:
     req = urllib.request.Request(url, data=urllib.parse.urlencode(dados).encode(), method="POST",
                                  headers={"Content-Type": "application/x-www-form-urlencoded"})
@@ -99,12 +126,30 @@ def _post_token(url: str, dados: dict) -> dict:
         with urllib.request.urlopen(req, timeout=15) as r:
             return json.loads(r.read())
     except urllib.error.HTTPError as e:
-        if e.code in (400, 401):
-            raise ErroSpotify("O Spotify recusou o login. Confira o Client ID e o Redirect URI no painel e entre de novo.",
-                              e.code, sem_login=True) from None
-        raise ErroSpotify(f"O Spotify respondeu com erro {e.code} no login.", e.code) from None
+        try:
+            corpo = e.read()
+        except Exception:
+            corpo = b""
+        raise _erro_token(e.code, corpo, dados) from None
     except (urllib.error.URLError, OSError, TimeoutError):
         raise ErroSpotify("Sem conexão com o Spotify. Confira a internet.") from None
+
+
+_HEX32 = re.compile(r"[0-9a-fA-F]{32}")
+
+
+def validar_client_id(bruto: str) -> tuple[str, str]:
+    """Devolve (client_id limpo, erro). Erro vazio quando o formato é válido (32 hexadecimais)."""
+    cid = (bruto or "").strip()
+    if not cid:
+        return cid, "Cole o Client ID do seu app (passo 3)."
+    if re.search(r"\s", cid):
+        return cid, "O Client ID tem espaço no meio. Copie de novo, sem espaços."
+    if len(cid) != 32:
+        return cid, f"O Client ID tem {len(cid)} caracteres e precisa ter 32. Copie inteiro, de Settings do app."
+    if not _HEX32.fullmatch(cid):
+        return cid, "O Client ID só tem números e letras de a a f. Confira se copiou o certo."
+    return cid, ""
 
 
 class Sessao:
@@ -137,29 +182,60 @@ class Sessao:
                 d = self.armazem.ler()
             return d["access_token"]
 
-    def entrar(self, abrir=webbrowser.open, tempo: float = 180.0, ao_url=None) -> None:
-        """Fluxo completo: abre o navegador, espera o retorno em 127.0.0.1 e troca o código."""
+    def iniciar_login(self, abrir=webbrowser.open, tempo: float = 180.0) -> "Login":
+        """Sobe o servidor de retorno, abre o navegador e devolve o login em andamento."""
         verifier, state = novo_verifier(), secrets.token_urlsafe(16)
         url = url_autorizacao(self.client_id, self.porta, desafio(verifier), state, self.auth_url)
         srv = ServidorRetorno(self.porta, state)
         try:
             srv.iniciar()
         except OSError:
-            raise ErroSpotify(f"Não consegui abrir a porta {self.porta} neste computador. Troque a porta nas configurações.") from None
-        try:
-            if ao_url:
-                ao_url(url)
-            abrir(url)
-            codigo = srv.esperar(tempo)
-        finally:
-            srv.parar()
-        self.trocar_codigo(codigo, verifier)
+            raise ErroSpotify(f"A porta {self.porta} está ocupada neste computador. Feche o que a usa "
+                              "ou troque a porta nas configurações.") from None
+        login = Login(self, srv, verifier, url, tempo)
+        login.abrir(abrir)
+        return login
+
+    def entrar(self, abrir=webbrowser.open, tempo: float = 180.0, ao_url=None) -> None:
+        """Fluxo completo e bloqueante (sem tela de espera)."""
+        login = self.iniciar_login(abrir, tempo)
+        if ao_url:
+            ao_url(login.url)
+        login.concluir()
 
     def trocar_codigo(self, codigo: str, verifier: str) -> None:
         r = _post_token(self.token_url, {"grant_type": "authorization_code", "code": codigo,
                                          "redirect_uri": redirect_uri(self.porta), "client_id": self.client_id,
                                          "code_verifier": verifier})
         self._guardar(r)
+
+
+class Login:
+    """Um login em andamento: dá para reabrir o navegador, ver o link e cancelar."""
+
+    def __init__(self, sessao: Sessao, srv: "ServidorRetorno", verifier: str, url: str, tempo: float) -> None:
+        self.sessao, self.srv, self.verifier, self.url, self.tempo = sessao, srv, verifier, url, tempo
+        self.inicio = time.monotonic()
+
+    def restante(self) -> float:
+        return max(0.0, self.tempo - (time.monotonic() - self.inicio))
+
+    def abrir(self, abrir=webbrowser.open) -> None:
+        try:
+            abrir(self.url)
+        except Exception:
+            pass
+
+    def concluir(self) -> None:
+        try:
+            codigo = self.srv.esperar(self.restante())
+        finally:
+            self.srv.parar()
+        self.sessao.trocar_codigo(codigo, self.verifier)
+
+    def cancelar(self) -> None:
+        """Fecha o servidor da porta na hora."""
+        self.srv.cancelar()
 
 
 PAGINA = ("<!doctype html><meta charset=utf-8><title>oma-spotify</title>"
@@ -173,6 +249,7 @@ class ServidorRetorno:
         self.codigo = ""
         self.erro = ""
         self.fim = threading.Event()
+        self.cancelado = False
         self.httpd: HTTPServer | None = None
 
     def iniciar(self) -> None:
@@ -190,7 +267,9 @@ class ServidorRetorno:
                     srv.erro = "Resposta de login inválida (state diferente). Tente entrar de novo."
                     msg = "Login recusado"
                 elif "error" in q:
-                    srv.erro = "Você não autorizou o acesso no Spotify."
+                    err = q["error"][0]
+                    srv.erro = ("Você não autorizou o acesso no Spotify." if err == "access_denied"
+                                else f"O Spotify devolveu o erro {err[:40]} no login.")
                     msg = "Login cancelado"
                 else:
                     srv.codigo = q.get("code", [""])[0]
@@ -210,13 +289,22 @@ class ServidorRetorno:
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
 
     def esperar(self, tempo: float) -> str:
-        if not self.fim.wait(tempo):
+        ok = self.fim.wait(tempo)
+        if self.cancelado:
+            raise ErroSpotify("Espera cancelada. A porta foi liberada.")
+        if not ok:
             raise ErroSpotify("O login demorou demais e foi cancelado. Tente de novo.")
         if self.erro or not self.codigo:
             raise ErroSpotify(self.erro or "O Spotify não devolveu o código de login.")
         return self.codigo
 
+    def cancelar(self) -> None:
+        self.cancelado = True
+        self.fim.set()
+        self.parar()
+
     def parar(self) -> None:
-        if self.httpd:
-            self.httpd.shutdown()
-            self.httpd.server_close()
+        h, self.httpd = self.httpd, None
+        if h:
+            h.shutdown()
+            h.server_close()

@@ -55,3 +55,7 @@ Marcador `abertura-mostrada` e `estado.json` (versão 1) em `$XDG_RUNTIME_DIR/om
 ## 9. Marcas e texto (decisão do agente)
 
 Marcas como o coração de curtida usam `rich.text.Text`, nunca strings com colchetes interpretadas como markup.
+
+## 10. Login com tela de espera (0.1.1, pedido do JC após erro real)
+
+Fato relatado: o Spotify mostrou "redirect_uri: Not matching configuration" enquanto o app esperava em silêncio por até 180 s. Mudanças: `Sessao.iniciar_login` devolve um `Login` (url, tempo restante, reabrir, cancelar); cancelar fecha o servidor da porta na hora (idempotente). A tela mostra contagem regressiva, copiar link (wl-copy se existir, senão mostra o link), ajuda de erros comuns depois de 15 s ou por botão, e "Verificar configuração" (`services/diagnostico.py`: Client ID mascarado com 4 e 4 caracteres, Redirect URI, porta livre, HEAD em accounts.spotify.com; nenhuma chamada autenticada). Client ID validado como 32 hexadecimais após trim (antes exigia 10 caracteres). Erros da troca de código por tipo (`invalid_client`, `invalid_grant`, `invalid_request`), sem texto genérico.
