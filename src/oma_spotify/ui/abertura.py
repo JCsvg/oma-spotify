@@ -38,7 +38,8 @@ class Abertura(ModalScreen[None]):
     Abertura #conteudo { width: auto; height: auto; }
     Abertura #logo { color: $accent; text-style: bold; width: auto; }
     Abertura #conteudo { align-horizontal: center; }
-    Abertura #sub { color: $text-muted; margin-top: 1; width: 100%; text-align: center; }
+    Abertura #onda { color: $accent; margin-top: 1; width: 100%; text-align: center; }
+    Abertura #sub { color: $oma-mudo; margin-top: 1; width: 100%; text-align: center; }
     """
 
     def __init__(self, versao: str = "") -> None:
@@ -49,6 +50,7 @@ class Abertura(ModalScreen[None]):
         w, h = self.app.size
         with Vertical(id="conteudo"):
             yield Static(Text("\n".join(banner(w, h))), id="logo")
+            yield Static("▁▂▃▅▃▂▁ ▁▂▄▃▂▁", id="onda")
             yield Static(Text(f"Spotify no terminal {self.versao}\nQualquer tecla ou clique entra"), id="sub")
 
     def on_mount(self) -> None:

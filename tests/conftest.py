@@ -81,11 +81,31 @@ def plugin(falso):
 
 
 @pytest.fixture
-def app(falso, estado, config, armazem, lancados, abertos, plugin):
+def letras():
+    from oma_spotify.services.falso import LETRAS
+    from oma_spotify.services.letras import LetrasFalsas
+    return LetrasFalsas(LETRAS)
+
+
+@pytest.fixture
+def app(falso, estado, config, armazem, lancados, abertos, plugin, letras):
     a = OmaSpotifyApp(cliente=falso, demo=True, estado=estado, config=config, armazem=armazem, abertura=False,
-                      abridor=abertos.append, lancador=lambda: lancados.append(1) or True, espera_dispositivo=0.05, plugin=plugin)
+                      abridor=abertos.append, lancador=lambda: lancados.append(1) or True, espera_dispositivo=0.05, plugin=plugin,
+                      letras=letras, copiador=lambda t: True)
     a.espera_max = 1.5
     return a
+
+
+async def pronto(app, pilot):
+    """Biblioteca, player e início carregados."""
+    await pilot.pause(0.3)
+    assert await esperar(pilot, lambda: app.player is not None and app.dados_bib and app.query("#recentes")
+                         and app.query_one("#recentes").itens, 5)
+    await pilot.pause(0.2)
+
+
+def janela(app) -> str:
+    return app.nome_janela(app.focused)
 
 
 async def esperar(pilot, cond, tempo=3.0):

@@ -1,7 +1,7 @@
 import json
 
 import pytest
-from textual.widgets import Button, Input
+from textual.widgets import Input
 
 from oma_spotify.app import OmaSpotifyApp
 from oma_spotify.estado import Estado
@@ -10,8 +10,7 @@ from oma_spotify.ui.abertura import Abertura, banner
 from oma_spotify.ui.dialogos import Confirmar, Pedir
 from oma_spotify.ui.setup import TelaSetup
 from oma_spotify.ui.biblioteca import Biblioteca
-from oma_spotify.ui.central import AreaCentral, VistaLista
-from oma_spotify.ui.widgets import Tabela
+from oma_spotify.ui.widgets import Botao
 from tests.conftest import esperar
 
 TAM = (130, 42)
@@ -74,25 +73,25 @@ async def test_banner_em_varios_tamanhos(estado, config, armazem, tam, grande):
 
 async def test_contexto_restaurado_ao_reabrir(estado, config, armazem):
     a = novo(estado, config, armazem)
-    async with a.run_test(size=TAM) as pilot:
+    async with a.run_test(size=(180, 48)) as pilot:
         await pilot.pause(0.8)
-        await pilot.click("#b-album")
+        a.query_one("#bib-abas").definir("album", avisar=True)
         a.query_one("#filtro-bib", Input).value = "noites"
         a.navegar({"t": "busca", "q": "lua", "cat": "track"})
-        a.query_one("#busca", Input).value = "lua"
+        a.guardar("busca", "lua")
         await pilot.pause(0.6)
-        await pilot.press("ctrl+p")
-        await pilot.press("ctrl+b")
+        a.focar_janela("principal")
+        await pilot.press("left_square_bracket", "right_square_bracket")
         await pilot.pause(0.3)
         await a.action_quit()
     assert estado.arquivo.exists()
     b = novo(Estado(estado.pasta), config, armazem)
-    async with b.run_test(size=TAM) as pilot:
+    async with b.run_test(size=(180, 48)) as pilot:
         await pilot.pause(1.0)
-        assert b.query_one(AreaCentral).vista["t"] == "busca" and b.query_one(AreaCentral).vista["q"] == "lua"
-        assert b.query_one("#busca", Input).value == "lua"
-        assert b.query_one(Biblioteca).chip == "album" and b.query_one("#filtro-bib", Input).value == "noites"
-        assert b.painel_pref is False and b.coluna_pref is True
+        assert b.query_one("#principal").vista["t"] == "busca" and b.query_one("#principal").vista["q"] == "lua"
+        assert b.query_one("#principal").vista["cat"] == "track"
+        assert b.query_one(Biblioteca).cat == "album" and b.query_one("#filtro-bib", Input).value == "noites"
+        assert b.pref_bib is False and b.pref_dir is False
 
 
 async def test_estado_so_guarda_contexto_nunca_segredos(estado, config, armazem):
@@ -101,7 +100,7 @@ async def test_estado_so_guarda_contexto_nunca_segredos(estado, config, armazem)
     a = novo(estado, config, armazem)
     async with a.run_test(size=TAM) as pilot:
         await pilot.pause(0.6)
-        a.query_one("#busca", Input).value = "busca qualquer"
+        a.guardar("busca", "busca qualquer")
         a.navegar({"t": "busca", "q": "busca qualquer", "cat": "tudo"})
         await pilot.pause(0.5)
         a.estado.salvar()
@@ -173,9 +172,11 @@ async def test_setup_esc_e_ctrl_setas(estado, config, armazem):
     async with a.run_test(size=TAM) as pilot:
         await pilot.pause(0.6)
         await pilot.press("ctrl+j")
-        assert isinstance(a.focused, Button)
+        assert isinstance(a.focused, Botao)
         await pilot.press("ctrl+l")
-        assert isinstance(a.focused, Button)
+        assert isinstance(a.focused, Botao)
+        await pilot.press("tab")
+        assert a.focused is not None
         await pilot.press("down", "up")
         assert isinstance(a.screen, TelaSetup)
 
@@ -187,7 +188,11 @@ async def test_config_opcoes_por_clique_e_teclado(estado, config, armazem):
         await pilot.pause(0.5)
         await pilot.click("#abertura")
         assert config.abertura is False
-        assert "não" in str(a.query_one("#abertura", Button).label)
+        assert "não" in a.query_one("#abertura", Botao).label
+        await pilot.click("#letra")
+        assert config.letra is False
+        await pilot.click("#icones")
+        assert config.icones == "simples"
         await pilot.click("#porta")
         await pilot.pause(0.2)
         assert isinstance(a.screen, Pedir)
