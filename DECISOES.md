@@ -60,7 +60,7 @@ Marcas como o coração de curtida usam `rich.text.Text`, nunca strings com colc
 
 Fato relatado: o Spotify mostrou "redirect_uri: Not matching configuration" enquanto o app esperava em silêncio por até 180 s. Mudanças: `Sessao.iniciar_login` devolve um `Login` (url, tempo restante, reabrir, cancelar); cancelar fecha o servidor da porta na hora (idempotente). A tela mostra contagem regressiva, copiar link (wl-copy se existir, senão mostra o link), ajuda de erros comuns depois de 15 s ou por botão, e "Verificar configuração" (`services/diagnostico.py`: Client ID mascarado com 4 e 4 caracteres, Redirect URI, porta livre, HEAD em accounts.spotify.com; nenhuma chamada autenticada). Client ID validado como 32 hexadecimais após trim (antes exigia 10 caracteres). Erros da troca de código por tipo (`invalid_client`, `invalid_grant`, `invalid_request`), sem texto genérico.
 
-## 11. Redesign 0.2.0: uma tela, como o Spotify Web (pedido do JC)
+## 11. Redesign 0.2.0: uma tela, como o Spotify Web (pedido do JC, SUPERADO pela seção 12)
 
 Pedido: interface com a localização das coisas do Spotify Web, sem abas, navegável por teclado e mouse. Referência: captura do Spotify Web do JC.
 
@@ -73,3 +73,31 @@ Pedido: interface com a localização das coisas do Spotify Web, sem abas, naveg
 - **Estado salvo** (`$XDG_RUNTIME_DIR`, sem segredos): histórico de páginas (até 30, com linha selecionada), painel aberto, biblioteca recolhida, filtro e chip da biblioteca, texto da busca.
 - **Busca:** a caixa fica na barra superior; o centro mostra os resultados com chips Tudo, Músicas, Álbuns, Artistas, Playlists e Podcasts (`show` entrou nos tipos pedidos, limit 10).
 - **Prints:** o de 80x24 foi gerado pelo próprio Textual (`save_screenshot`, convertido com ImageMagick), porque a janela do foot no Hyprland ocupa a workspace inteira e não dá para reduzi-la sem mexer no gerenciador de janelas.
+
+## 12. 0.3.0: janelas, sem capas, tocar pelo plugin (pedido do JC)
+
+Feedback do JC sobre a 0.2.0: não quer algo idêntico ao Spotify Web, não quer imagens de álbum, quer cada parte como uma janela com borda e título, Ctrl+setas entre as janelas, e não gostou do diálogo "Nenhum dispositivo do Spotify ativo".
+
+- **Capas e Pillow removidos** (código, cache em `~/.cache/oma-spotify`, dependência, testes). As listas são só texto.
+- **Janelas** (`.janela` no CSS, `border_title` numerado): [1] Busca, [2] Biblioteca, [3] Principal, [4] Fila (antigo painel direito, alternável) e [5] Player. A janela com foco (`:focus-within`) tem borda e título na cor de destaque; as outras ficam discretas. O subtítulo da [3] mostra a página aberta. O Início é uma lista de texto com seções (acesso rápido, tocados recentemente, programas, artistas, playlists, álbuns, mais ouvidos).
+- **Navegação** (decisão do JC, substitui a da seção 11): Ctrl+setas e Ctrl+h/j/k/l movem o foco para a janela mais próxima na direção (`App.action_janela`, por geometria da tela, preferindo janelas que se sobrepõem no eixo perpendicular); Alt+setas e Alt+hjkl são apelidos; 1 a 5 saltam direto (a 4 e a 2 mostram a janela se estiver escondida). Dentro da janela, ↑↓ andam nas linhas e ←→ nos botões da mesma fileira. No player os botões (aleatório, anterior, play, próxima, repetir, curtir, fila, dispositivos, vol−, vol+) são alcançáveis por ←→, a barra de progresso é focável (←→ buscam 5 s), a barra de volume só responde a clique, a `+`/`-` e aos botões vol−/vol+. Em diálogos, os mesmos atalhos andam entre botões e seções.
+- **Janelas em 80x24:** a [4] some (precisa de 120 colunas), a [2] estreita (24 colunas) e linhas longas são cortadas com reticências na largura da janela. A [5] tem altura 5 (borda e 3 linhas).
+- **Ctrl+h, j, k, l:** os terminais mandam Ctrl+h como Backspace e Ctrl+j como Enter em alguns casos. No foot do JC o Textual os distingue; não foi testado em outros terminais.
+
+### Tocar pelo plugin OmaSpotify
+
+Investigação (somente leitura) de `~/.config/omarchy/plugins/io.github.jeremylanger.omaspotify`, licença MIT, README, docs e scripts. Achados:
+
+- O plugin tem um backend em Rust sobre librespot, instalado em `~/.local/lib/omaspotify/omaspotify-backend`, e a unidade de usuário `omaspotify.service` (`systemctl --user cat omaspotify.service` funciona neste PC; o serviço está parado). Ele aparece como dispositivo Spotify Connect chamado "OmaSpotify" (`device_name` em `config/playback.conf`).
+- Há um protocolo local em `$XDG_RUNTIME_DIR/omaspotify/backend.sock` (JSON por linha, versão 1: `load`, `play`, `pause`, `seek`, `set_volume`...), mas o próprio plugin o descreve como interno e só o usa junto com MPRIS e Web API. **Decisão do agente:** não usar o socket. Pela Web API, o dispositivo Connect responde a tocar, pausar, volume, buscar e fila como qualquer outro, então um único caminho serve para o plugin, o celular e o Spotify do PC, e não depende de detalhes internos instáveis do plugin.
+- A autorização de reprodução do plugin é separada da de conta e fica no chaveiro dele. **O oma-spotify não lê nem copia credenciais, tokens ou chaveiro do plugin** (há um teste que confere que o módulo não lê arquivos além de checar a existência do binário).
+
+Desenho (`services/plugin.py`, `App.garantir`):
+
+1. Alvo de reprodução = o dispositivo "OmaSpotify" listado em `/me/player/devices`. Achado, o app transfere (`play=false`) e toca.
+2. Não achado e plugin instalado (a unidade existe e o binário existe): `systemctl --user start omaspotify.service`, se ainda não estiver ativo, e espera o dispositivo por até 30 s (consulta a cada 1,5 s).
+3. Plugin ausente, serviço que não inicia ou dispositivo que não aparece: mensagem curta na janela [5] e aviso, dizendo o que fazer ("Abra o OmaSpotify e conclua a autorização de reprodução (Finish playback setup)"). Sem diálogo.
+4. Fallback: Spotify de desktop (`/usr/bin/spotify`) como segunda opção. Em Configurações, "Tocar por": automático (padrão; plugin se instalado, senão Spotify do PC, senão escolher), plugin OmaSpotify, Spotify do PC, escolher o dispositivo (abre a página Dispositivos).
+5. Sem dispositivo ativo (404 `NO_ACTIVE_DEVICE`): o diálogo antigo foi removido. O app executa o passo acima sozinho e repete a ação pedida; se a segunda tentativa também falhar em até 10 s, mostra "Ainda sem dispositivo ativo" em vez de entrar em laço.
+
+Não testado com conta real: iniciar o serviço de verdade, o dispositivo aparecer para o Spotify e tocar por ele. Nos testes o serviço é falso (`PluginFalso`) e o cliente do Spotify também.
