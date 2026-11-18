@@ -54,7 +54,7 @@ class Barra(Widget, can_focus=True):
 
 
 class Tabela(DataTable):
-    BINDINGS = [Binding("j", "cursor_down", show=False), Binding("k", "cursor_up", show=False),
+    BINDINGS = [Binding("enter", "select_cursor", "Tocar", key_display="Enter"), Binding("j", "cursor_down", show=False), Binding("k", "cursor_up", show=False),
                 Binding("left,h", "app.lateral(-1)", show=False), Binding("right,l", "app.lateral(1)", show=False)]
 
     def __init__(self, **kw) -> None:

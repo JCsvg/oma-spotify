@@ -47,7 +47,7 @@ class ListaItens(Pagina):
         Binding("slash", "filtrar", "Filtrar", key_display="/"),
         Binding("f5", "atualizar", "Atualizar", show=False),
     ]
-    RODAPE = ("tocar_item", "abrir_item", "enfileirar", "curtir_item", "filtrar")
+    RODAPE = ("select_cursor", "abrir_item", "enfileirar", "curtir_item", "filtrar")
     BOTOES = (("tocar", "Tocar"), ("abrir", "Abrir"), ("fila", "Adicionar à fila"), ("curtir", "Curtir"),
               ("playlist", "Adicionar a playlist"), ("atualizar", "Atualizar"))
     VAZIO = "Nada por aqui ainda."
@@ -289,7 +289,7 @@ class PaginaPlaylists(ListaItens):
     COLUNAS = ("", "Playlist", "De", "Faixas", "")
     BOTOES = (("tocar", "Tocar playlist"), ("abrir", "Abrir"), ("nova", "Nova playlist"), ("atualizar", "Atualizar"))
     BINDINGS = ListaItens.BINDINGS + [Binding("n", "nova", "Nova playlist")]
-    RODAPE = ("tocar_item", "abrir_item", "nova", "filtrar")
+    RODAPE = ("select_cursor", "abrir_item", "nova", "filtrar")
 
     def carregar(self, c):
         return c.playlists()
@@ -409,7 +409,7 @@ class PaginaFila(ListaItens):
     ID, NOME = "fila", "Fila"
     VAZIO = "A fila está vazia. Adicione faixas com a tecla a, em qualquer lista."
     BOTOES = (("tocar", "Tocar agora"), ("curtir", "Curtir"), ("atualizar", "Atualizar"))
-    RODAPE = ("tocar_item", "curtir_item", "atualizar", "filtrar")
+    RODAPE = ("select_cursor", "curtir_item", "atualizar", "filtrar")
     BINDINGS = ListaItens.BINDINGS
 
     def carregar(self, c):
@@ -457,7 +457,7 @@ class PaginaDispositivos(ListaItens):
     COLUNAS = ("", "Dispositivo", "Tipo", "Volume", "")
     VAZIO = "Nenhum dispositivo encontrado. Abra o Spotify no PC ou no celular."
     BOTOES = (("tocar", "Transferir para este"), ("pc", "Abrir o Spotify do PC"), ("atualizar", "Atualizar"))
-    RODAPE = ("tocar_item", "abrir_pc", "atualizar", "filtrar")
+    RODAPE = ("select_cursor", "abrir_pc", "atualizar", "filtrar")
     BINDINGS = [Binding("enter", "tocar_item", "Transferir", key_display="Enter"), Binding("s", "abrir_pc", "Abrir Spotify do PC"),
                 Binding("f5", "atualizar", "Atualizar", show=False), Binding("slash", "filtrar", "Filtrar", key_display="/")]
 

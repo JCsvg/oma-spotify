@@ -78,7 +78,7 @@ class TelaSetup(NavegacaoMixin, Screen):
         return [w for w in self.query(Button) if w.focusable]
 
     def acoes_do_rodape(self) -> list[str]:
-        return ["botao_acionar", "botao"]
+        return ["botao_acionar", "botao(1)", "ajuda_aba"]
 
     def action_sair_setup(self) -> None:
         if isinstance(self.focused, Input):
