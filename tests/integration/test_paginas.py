@@ -123,7 +123,7 @@ async def test_playlist_tocando_vira_equalizador_e_hover_vira_play(app):
 async def test_playlist_enter_toca_no_contexto_e_t(app, falso):
     async with app.run_test(size=GRANDE) as pilot:
         await pronto(app, pilot)
-        pg = await abrir(app, pilot, {"t": "item", "item": P1})
+        await abrir(app, pilot, {"t": "item", "item": P1})
         await pilot.press("down", "enter")
         assert await esperar(pilot, lambda: falso.chamadas[-1][:2] == ("tocar", "spotify:playlist:p1") and falso.chamadas[-1][3])
         await pilot.click("#tocar")

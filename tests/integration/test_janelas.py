@@ -4,7 +4,7 @@ import pytest
 
 from oma_spotify.ui.biblioteca import Biblioteca
 from oma_spotify.ui.lista import Lista
-from tests.conftest import esperar, janela, pronto
+from tests.conftest import janela, pronto
 
 GRANDE = (180, 48)
 

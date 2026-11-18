@@ -7,7 +7,6 @@ from textual import events, on
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal
-from textual.widget import Widget
 from textual.widgets import Input, Static
 
 from oma_spotify.ui.icones import ic

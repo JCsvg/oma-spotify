@@ -16,8 +16,8 @@ from oma_spotify.ui.biblioteca import CURTIDAS
 from oma_spotify.ui.capa import Capa
 from oma_spotify.ui.fonte import grande, largura_grande
 from oma_spotify.ui.icones import ic
-from oma_spotify.ui.lista import EstadoLinha, Lista, ajustar, colunas
-from oma_spotify.ui.principal import item_de_dict, serializar
+from oma_spotify.ui.lista import EstadoLinha, Lista, colunas
+from oma_spotify.ui.principal import item_de_dict
 from oma_spotify.ui.widgets import Abas, Botao, Cartao, Regua, Secao
 
 DIAS = ("segunda", "terça", "quarta", "quinta", "sexta", "sábado", "domingo")
@@ -794,7 +794,7 @@ class PaginaColecao(Pagina):
                                               f"{ic('remover')} {len(tirados)} faixas removidas de {pl.nome}", desfazer) if ok else None)
 
     def mover_item(self, passo: int) -> None:
-        a, pl = self.app, self.item
+        a = self.app
         if not self.minha:
             a.notify("Só dá para mover faixas de playlist sua.", timeout=4)
             return

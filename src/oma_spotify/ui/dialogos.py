@@ -563,7 +563,7 @@ class Teclas(Dialogo):
     DEFAULT_CSS = css("Teclas", """
     Teclas #caixa { width: 104; }
     Teclas #cols { height: auto; margin-top: 1; }
-    Teclas .col { width: 1fr; height: auto; }
+    Teclas .col { width: 1fr; height: auto; text-wrap: nowrap; text-overflow: ellipsis; }
     """)
     BINDINGS = [Binding("escape,q", "cancelar", "fechar", priority=True), Binding("question_mark", "ajuda", show=False)]
 

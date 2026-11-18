@@ -50,7 +50,6 @@ class Tocando(Vertical):
         capa.styles.width = min(32, h * 2)
 
     def pintar(self, p, curtido: bool) -> None:
-        a = self.app
         q = self.query_one
         cur = q("#tc-curtir", Botao)
         if p is None or p.item is None:
@@ -153,7 +152,6 @@ class FilaLetra(Vertical):
         self._mostrar_aba()
 
     def _titulo(self) -> None:
-        a = self.app
         fila_est = "bold" if self.aba == "fila" else ""
         letra_est = "bold" if self.aba == "letra" else ""
         self.border_title = Text.assemble((" fila", fila_est), (" · ", ""), ("letra ", letra_est))
