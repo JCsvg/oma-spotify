@@ -68,6 +68,7 @@ class BarraPlayer(NavegacaoMixin, Horizontal):
     BarraPlayer #dir { width: 1fr; }
     BarraPlayer #mini { width: 8; height: 4; margin-right: 1; }
     BarraPlayer #info { width: 1fr; height: 4; }
+    BarraPlayer #titulo, BarraPlayer #artista { height: 1; text-wrap: nowrap; text-overflow: ellipsis; }
     BarraPlayer .controles { height: 1; align-horizontal: center; margin-top: 1; }
     BarraPlayer .controles Button { margin: 0 1; }
     BarraPlayer #play { text-style: bold; background: $accent; color: $background; }
@@ -117,6 +118,7 @@ class BarraPlayer(NavegacaoMixin, Horizontal):
 
     def ajustar(self, largura: int) -> None:
         self.query_one("#mini").display = largura >= 100
+        self.query_one("#btn-painel").display = largura >= 120
 
     @on(Button.Pressed)
     def _botao(self, ev: Button.Pressed) -> None:

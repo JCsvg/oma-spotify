@@ -36,7 +36,7 @@ Tokens: `$XDG_STATE_HOME/oma-spotify/tokens.json`, arquivo 0600 numa pasta 0700,
 
 `services/api.py` (`ClienteSpotify`) e `services/falso.py` (`ClienteFalso`) têm a mesma interface, sem classe base. A interface só conhece essa forma. `--demo` usa o falso, com artistas e faixas fictícios ou de domínio público. Os testes de API usam um servidor HTTP falso em 127.0.0.1 (`tests/fake_api.py`); nenhum teste fala com a rede.
 
-## 5. Navegação (decisão do JC, mensagem de 17/11/2026, implementada pelo agente)
+## 5. Navegação por abas (0.1, SUPERADA pela seção 11)
 
 Trocar de aba só com Alt+←/→ ou Alt+h/l (valem também em campo de texto), números 1 a 9 fora de campo de texto, e clique na aba. As abas não recebem foco, então as setas não as trocam. ↑ ↓ j k andam nas linhas; ← → h l andam entre botões e painéis da mesma tela. No Tocando agora, ← → só buscam a posição quando a barra de progresso está em foco. Demais teclas: Ctrl+j/k, Ctrl+h/l, Ctrl+Enter, Esc, Ctrl+Espaço e F1, `/`. Espaço é play/pausa global fora de campo de texto. O código de `ui/navegacao.py` e a tela de abertura vêm do oma-docker.
 
@@ -59,3 +59,17 @@ Marcas como o coração de curtida usam `rich.text.Text`, nunca strings com colc
 ## 10. Login com tela de espera (0.1.1, pedido do JC após erro real)
 
 Fato relatado: o Spotify mostrou "redirect_uri: Not matching configuration" enquanto o app esperava em silêncio por até 180 s. Mudanças: `Sessao.iniciar_login` devolve um `Login` (url, tempo restante, reabrir, cancelar); cancelar fecha o servidor da porta na hora (idempotente). A tela mostra contagem regressiva, copiar link (wl-copy se existir, senão mostra o link), ajuda de erros comuns depois de 15 s ou por botão, e "Verificar configuração" (`services/diagnostico.py`: Client ID mascarado com 4 e 4 caracteres, Redirect URI, porta livre, HEAD em accounts.spotify.com; nenhuma chamada autenticada). Client ID validado como 32 hexadecimais após trim (antes exigia 10 caracteres). Erros da troca de código por tipo (`invalid_client`, `invalid_grant`, `invalid_request`), sem texto genérico.
+
+## 11. Redesign 0.2.0: uma tela, como o Spotify Web (pedido do JC)
+
+Pedido: interface com a localização das coisas do Spotify Web, sem abas, navegável por teclado e mouse. Referência: captura do Spotify Web do JC.
+
+- **Estrutura** (`ui/`): `BarraTopo`, `Biblioteca`, `AreaCentral` (com `VistaInicio` e `VistaLista`, e `PaginaConfig` para as configurações), `PainelAgora`, `BarraPlayer`, `CartaCapa` e `Capa`. As telas das abas antigas (Fila, Recentes, Mais ouvidos, Dispositivos, Configurações) continuam, agora alcançáveis pelo menu Conta e pelos botões do player (Fila, Dispositivos).
+- **Navegação** (decisão do JC): Alt+←/→ entre biblioteca, centro e painel; Alt+↑/↓ entre barra superior, centro e player; ↑↓←→ e hjkl andam por posição na tela dentro da área; Enter abre ou toca; Espaço play/pausa; `/` busca; Esc, Backspace, Alt+[ e Alt+] no histórico. O código de movimento (`App.action_mover`) escolhe o controle vizinho pela geometria da tela, então vale para qualquer layout.
+- **Conflito do pedido, resolvido pelo agente:** o pedido listou "l curtir" e também h/l como setas. Mantive h/l como setas (esquerda e direita, como no nvim) e deixei `c` para curtir. Outras teclas de lista que colidiam com as de mídia: remover da playlist virou `d` (só dentro de listas), adicionar a playlist `m`.
+- **Layout adaptável:** painel direito some abaixo de 120 colunas, a biblioteca recolhe abaixo de 100 (só miniaturas). Ctrl+P e Ctrl+B alternam por preferência.
+- **Capas** (`ui/capa.py`): meio-bloco ▀ com cor de frente e de fundo de 24 bits (2 pixels por célula na vertical), reduzidas pelo Pillow (LANCZOS). Imagens baixadas por https, no máximo 3 MB, cache em `$XDG_CACHE_HOME/oma-spotify` (pasta 0700, nome é o SHA-1 da URL, poda dos mais antigos acima de 50 MB). A URL da imagem nunca vai para log nem para o estado. Fallback para quadrado com iniciais se faltar Pillow, rede ou o download falhar. Sixel do foot não foi avaliado: o meio-bloco funciona igual em qualquer terminal. No `--demo` as capas são procedurais (gradiente, anéis, listras e xadrez a partir do URI), sem imagem de terceiros. Pillow virou dependência do pacote.
+- **Início:** só com o que a API entrega: acesso rápido (Músicas Curtidas e 7 playlists e álbuns da biblioteca), tocados recentemente, seus programas, seus artistas, suas playlists, seus álbuns, mais ouvidos (artistas, quando a API deixa). Não há feed Home, novos lançamentos, categorias nem recomendações (ver seção 1). "Novo lançamento de" e "Prévia da letra" do Spotify Web não existem aqui.
+- **Estado salvo** (`$XDG_RUNTIME_DIR`, sem segredos): histórico de páginas (até 30, com linha selecionada), painel aberto, biblioteca recolhida, filtro e chip da biblioteca, texto da busca.
+- **Busca:** a caixa fica na barra superior; o centro mostra os resultados com chips Tudo, Músicas, Álbuns, Artistas, Playlists e Podcasts (`show` entrou nos tipos pedidos, limit 10).
+- **Prints:** o de 80x24 foi gerado pelo próprio Textual (`save_screenshot`, convertido com ImageMagick), porque a janela do foot no Hyprland ocupa a workspace inteira e não dá para reduzi-la sem mexer no gerenciador de janelas.

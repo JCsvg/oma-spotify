@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "oma-spotify"
-version = "0.1.1"
-description = "Cliente de Spotify em TUI para quem tem Premium, para mouse e teclado"
+version = "0.2.0"
+description = "Cliente de Spotify em TUI parecido com o Spotify Web, para quem tem Premium, com mouse e teclado"
 readme = "README.md"
 requires-python = ">=3.13"
 license = { text = "MIT" }
 authors = [{ name = "JCsvg" }]
-dependencies = ["textual>=8.0,<9"]
+dependencies = ["textual>=8.0,<9", "pillow>=10"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "pytest-asyncio>=0.24"]

@@ -526,7 +526,6 @@ async def test_dispositivos_transferir_e_abrir_spotify_do_pc(app, falso, lancado
         await pilot.press("down", "enter")
         assert await esperar(pilot, lambda: ("transferir", "d2") in falso.chamadas)
         falso.devs, falso.sem_dispositivo = [], True
-        await pilot.press("escape") if False else None
         app.executar("x", falso.pausar)
         await pilot.pause(0.5)
         assert isinstance(app.screen, SemDispositivo)
@@ -536,6 +535,18 @@ async def test_dispositivos_transferir_e_abrir_spotify_do_pc(app, falso, lancado
         from oma_spotify.services.modelos import Dispositivo
         falso.devs = [Dispositivo("pc", "Meu PC", "Computer", False, 50)]
         assert await esperar(pilot, lambda: ("transferir", "pc") in falso.chamadas, 5)
+
+
+async def test_botao_abrir_spotify_do_pc_na_tela_de_dispositivos(app, falso, lancados):
+    async with app.run_test(size=TAM) as pilot:
+        v = await abrir_lista(app, pilot, {"t": "dispositivos"})
+        await pilot.click("#abrir-pc")
+        await pilot.pause(0.3)
+        assert lancados == [1]
+        v.query_one("#tabela", Tabela).focus()
+        await pilot.press("o")
+        await pilot.pause(0.3)
+        assert lancados == [1, 1]
 
 
 async def test_sem_dispositivo_escolher_leva_a_dispositivos(app, falso):

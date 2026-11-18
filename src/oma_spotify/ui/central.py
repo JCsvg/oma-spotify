@@ -216,6 +216,8 @@ class VistaLista(NavegacaoMixin, Vertical):
                         yield Button("♡ Salvar", id="salvar")
                     if self.vista["t"] == "top":
                         yield Button("Período", id="periodo")
+                    if self.vista["t"] == "dispositivos":
+                        yield Button("Abrir o Spotify do PC", id="abrir-pc")
         if self.chips():
             with Horizontal(id="chips-v"):
                 for cid, rot in self.chips():
@@ -431,7 +433,7 @@ class VistaLista(NavegacaoMixin, Vertical):
                 self.recarregar()
             self.app.guardar_vista(self)
             return
-        {"tocar": self.action_tocar_tudo, "salvar": self.action_salvar_pagina, "periodo": self.action_periodo,
+        {"abrir-pc": self.app.abrir_spotify_pc, "tocar": self.action_tocar_tudo, "salvar": self.action_salvar_pagina, "periodo": self.action_periodo,
          "fila": self.action_fila_sel, "curtir": self.action_curtir_sel, "playlist": self.action_para_playlist,
          "remover": self.action_remover_sel, "atualizar": self.action_atualizar}.get(b, lambda: None)()
 
@@ -470,6 +472,9 @@ class VistaLista(NavegacaoMixin, Vertical):
             self.tocar_linha(i)
 
     def action_abrir_sel(self) -> None:
+        if self.vista["t"] == "dispositivos":
+            self.app.abrir_spotify_pc()
+            return
         i = self.atual()
         if i is not None and i.tipo in CONTEXTOS:
             self.app.abrir_item(i)
