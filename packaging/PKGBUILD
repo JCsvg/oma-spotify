@@ -1,0 +1,43 @@
+# Maintainer: JCsvg
+#
+# Pacote local, construído a partir de um tarball gerado por `git archive`
+# (ver packaging/empacotar.sh). Só depende de python e python-textual (repositório extra);
+# nada do AUR, nada vendorizado. O HTTP usa a biblioteca padrão.
+
+pkgname=oma-spotify
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Cliente de Spotify em TUI para quem tem Premium, para mouse e teclado"
+arch=('any')
+url="https://github.com/JCsvg/oma-spotify"
+license=('MIT')
+depends=(
+  'python>=3.13'
+  'python-textual>=8'
+)
+optdepends=(
+  'spotify: o app de desktop, aberto pelo botão "Abrir o Spotify do PC"'
+)
+makedepends=('python-build' 'python-installer' 'python-wheel' 'python-hatchling')
+checkdepends=('python-pytest' 'python-pytest-asyncio')
+source=("$pkgname-$pkgver.tar.gz")
+sha256sums=('SKIP')  # tarball local; o empacotar.sh imprime o hash real
+
+build() {
+  cd "$pkgname-$pkgver"
+  python -m build --wheel --no-isolation
+}
+
+check() {
+  cd "$pkgname-$pkgver"
+  # Só os unitários (servidor HTTP falso em 127.0.0.1): os de interface demoram.
+  PYTHONPATH=src python -m pytest -q tests/unit -p no:warnings -p no:cacheprovider
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+  python -m installer --destdir="$pkgdir" dist/*.whl
+  install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+  install -Dm644 DECISOES.md "$pkgdir/usr/share/doc/$pkgname/DECISOES.md"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
