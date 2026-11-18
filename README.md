@@ -2,11 +2,11 @@
 
 TUI em Python (Textual) para ouvir e organizar o Spotify pelo terminal, no modelo do [herdr](https://github.com/herdrdev/herdr): janelas com borda fina, só a janela em foco acende na cor de destaque, biblioteca numerada à esquerda e tudo por teclado e por mouse. Em português do Brasil e nas cores do tema ativo do Omarchy. Fala com a Web API oficial, exige conta Premium e toca pelo player local do plugin OmaSpotify, sem precisar do Spotify de desktop. A letra sincronizada vem da [LRCLIB](https://lrclib.net).
 
-Versão 0.4.1.
+Versão 0.5.0.
 
 ## Capturas de tela
 
-As capturas usam `--demo` (dados inventados) e foram geradas pelo próprio Textual em 180x48 (o Foot em tela cheia no notebook) e em 90x30 (meia tela). Nesta versão não há imagem de capa: onde o design tem capa ou foto, há um bloco na cor do item com a inicial (redondo para artistas).
+As capturas usam `--demo` (dados e capas inventados, gerados na hora) e foram geradas pelo próprio Textual em 180x48 (o Foot em tela cheia no notebook) e em 90x30 (meia tela). As capas aparecem como no terminal: meio-blocos coloridos, sem sixel.
 
 ![Início: atalhos, tocadas recentemente, artistas e podcasts](docs/img/inicio-180x48.png)
 
@@ -45,8 +45,15 @@ Mais capturas em [docs/img](docs/img): `ir-para`, `opcoes`, `tocar-em`, `adicion
 - **Diálogos**: ir para (`Ctrl+p`, procura na biblioteca, nas páginas e nos comandos), opções (`o` ou botão direito), tocar em (`d`, com volume por aparelho), adicionar à playlist (`p`, com “já tem”), teclas da janela (`Ctrl+Espaço` ou `F1`) e ajuda completa (`?`).
 - **Avisos** no canto de baixo à direita; os que oferecem desfazer ficam 8 s.
 - **Tamanhos**: 150 colunas ou mais mostram tudo; de 110 a 149 a direita vira gaveta (`]`); abaixo de 110 só a Principal, com gavetas dos dois lados; abaixo de 30 linhas o Tocando fica sem capa e o player numa linha.
+- **Capas e fotos de verdade** no início, nos cartões, no Tocando, nos cabeçalhos, na busca, no palco e no player encolhido (ver abaixo). Fotos de artista são redondas.
 - **Abertura** OMA SPOTIFY na primeira vez de cada boot e **primeiro acesso** guiado.
 - Modo `--demo`: dados inventados, sem login e sem rede, cobrindo todas as telas.
+
+## Capas
+
+As capas são desenhadas com meio-blocos (`▀`): cada célula mostra dois pixels, um na cor da frente e outro na cor do fundo. Funciona em qualquer terminal com cor de 24 bits, inclusive dentro do tmux e do herdr, e convive com rolagem, gavetas e diálogos por cima. Sixel ficou de fora porque o Textual redesenha por células e a imagem sixel não acompanha rolagem nem sobreposição.
+
+O caminho de cada capa: a URL vem da API do Spotify (só `https` em `*.scdn.co` e `*.spotifycdn.com`), o app baixa a menor imagem com pelo menos 64 px numa das threads do pool (duas capas por vez), o `magick` do ImageMagick reduz para 64x64 fora do processo e os 12 KB ficam em `~/.cache/oma-spotify/capas` (até 50 MB; sai a mais antiga) e na memória (64 capas, 0,8 MB). Só as capas que aparecem na tela são pedidas, e as pendentes são esquecidas ao trocar de página. Enquanto carrega, sem ImageMagick, sem rede ou com "mostrar capas" desligado nas Configurações, aparece o bloco com a inicial. A URL da imagem nunca vai para o `estado.json`.
 
 ## A sua fila
 
@@ -92,12 +99,12 @@ O login usa OAuth 2.0 com PKCE, sem client secret. Os tokens ficam em `$XDG_STAT
 
 ## Instalar
 
-Dependências: `python` (3.13 ou mais novo) e `python-textual`. Opcionais: o plugin OmaSpotify (player local, usado por padrão) e `spotify` (app de desktop, segunda opção). Os ícones usam Nerd Font (o Omarchy já vem com ela); `"icones": "simples"` no config.json, ou o botão nas Configurações, troca por caracteres comuns.
+Dependências: `python` (3.13 ou mais novo) e `python-textual`. Opcionais: `imagemagick` (capas; o Omarchy já traz), o plugin OmaSpotify (player local, usado por padrão) e `spotify` (app de desktop, segunda opção). Os ícones usam Nerd Font (o Omarchy já vem com ela); `"icones": "simples"` no config.json, ou o botão nas Configurações, troca por caracteres comuns.
 
 ```bash
 cd packaging
 ./empacotar.sh              # gera o pacote em packaging/
-sudo pacman -U oma-spotify-0.4.1-1-any.pkg.tar.zst
+sudo pacman -U oma-spotify-0.5.0-1-any.pkg.tar.zst
 oma-spotify
 ```
 
@@ -132,8 +139,9 @@ O app foi medido com `--demo` num pseudo-terminal de 180x48 (Python 3.13, Textua
 |---|---|---|
 | 0.3.0 | 48 a 51 MB | 95 MB (25 rodadas de abrir, voltar e buscar) |
 | 0.4.0 | 50 MB | 68 MB (80 páginas e 20 buscas), 69 MB (160 páginas e 40 buscas) |
+| 0.5.0, com capas | 53 a 55 MB | 80 a 81 MB (80 páginas e 20 buscas), 80 MB (160 páginas e 40 buscas) |
 
-Na 0.4.0 o uso para de crescer depois das primeiras páginas. O que segura a memória: listas virtualizadas (só desenham as linhas visíveis), uma página por vez na Principal, histórico de 30 páginas, cache de letras com 12 faixas e de playlists com 24, imports preguiçosos (login, diálogos, palco, cliente da API, LRCLIB), um pool de 4 threads no lugar de uma thread por chamada, equalizador só enquanto a faixa toca e o terminal está em foco, e consulta ao player a cada 2 s em foco e a cada 10 s em segundo plano. O teste `tests/integration/test_memoria.py` falha se o repouso passar de 75 MB, o uso passar de 100 MB ou a navegação deixar widgets ou mais de 25 MB para trás.
+Desde a 0.4.0 o uso para de crescer depois das primeiras páginas. As capas custam uns 4 MB em repouso e 12 MB em uso (a meta era no máximo 15 MB): o ImageMagick roda em outro processo e some, e a interface só guarda 12 KB por capa. O que segura a memória: listas virtualizadas (só desenham as linhas visíveis), uma página por vez na Principal, histórico de 30 páginas, cache de letras com 12 faixas e de playlists com 24, imports preguiçosos (login, diálogos, palco, cliente da API, LRCLIB), um pool de 4 threads no lugar de uma thread por chamada, equalizador só enquanto a faixa toca e o terminal está em foco, e consulta ao player a cada 2 s em foco e a cada 10 s em segundo plano. O teste `tests/integration/test_memoria.py` falha se o repouso passar de 70 MB, o uso passar de 95 MB ou a navegação deixar widgets ou mais de 25 MB para trás.
 
 ## Abertura e contexto
 

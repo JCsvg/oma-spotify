@@ -156,3 +156,20 @@ Geradas pelo próprio Textual (`save_screenshot`) e convertidas com `rsvg-conver
 Causa: o `estado.json` da 0.3.0 guardava no histórico páginas que deixaram de existir (Dispositivos, Fila). A 0.4.0 restaurava a página aberta e caía na página de playlist sem item (`AttributeError: 'NoneType' object has no attribute 'desc'`). O demo passava porque começa sem contexto e com dados completos.
 
 Correção (decisão do agente): o histórico salvo passa por `vista_valida`; página que sumiu ou veio quebrada sai, e se era a página aberta o app abre o início. A sua fila e as larguras salvas também são conferidas. A API passou a tratar campos nulos (`name`, `artists`, `album`, `owner`, `description`, `duration_ms`, `device`, `repeat_state`, listas `null` e itens `null` dentro das listas) como texto vazio ou zero. Por segurança, um item que mesmo assim falhe ao desenhar vira uma linha em branco, e um erro ao mostrar dados vira aviso em vez de derrubar o app. `tests/integration/test_api_real.py` roda o app com o cliente real contra o servidor falso: dados parciais, campos nulos, 403 e 404 nos endpoints do modo de desenvolvimento, conta vazia e o contexto da 0.3.0.
+
+## 15. 0.5.0: capas e fotos de verdade (pedido do JC)
+
+O JC não gostou dos blocos com a inicial e pediu as capas do design, com o app leve (no máximo 15 MB acima da 0.4.x).
+
+**Técnica (decisão do agente, com números):**
+
+| Opção | Custo medido | Por que sim ou não |
+|---|---|---|
+| (a) Pillow no processo | +2,7 MB só de importar, +0,7 MB por decodificação de 640 px | cabia, mas volta uma dependência Python que o JC tirou na 0.3.0 |
+| (b) `magick` fora do processo, saída 64x64 RGB em disco | +0,2 MB no app, 42 ms por capa | escolhida: o ImageMagick já vem no Omarchy e a memória dele some quando termina |
+| sixel no foot | não medido | o Textual redesenha por células: a imagem sixel não acompanha rolagem, gaveta nem diálogo por cima, e não passa pelo herdr ou tmux |
+| (c) meio-blocos `▀` | parte do custo abaixo | escolhido para desenhar: funciona em qualquer terminal de 24 bits |
+
+Resultado: (b) para reduzir e (c) para desenhar. RSS no `--demo`, pty de 180x48: 0.4.1 com 50 MB em repouso e 68 MB depois de usar; 0.5.0 com 53 a 55 MB e 80 a 81 MB (estável entre 20 e 40 rodadas). Duas coisas pesaram e foram ajustadas: com 24 capas na memória o demo regerava capas e o RSS subia sem parar (com 64 capas, 0,8 MB, parou), e as cores das células são arredondadas para 32 níveis por canal, para repetir estilos.
+
+**Regras:** só baixa URL `https` de `*.scdn.co` e `*.spotifycdn.com` devolvida pela API, até 3 MB; a menor imagem com pelo menos 64 px; duas capas por vez no pool de 4 threads; só o que está na tela é pedido; trocar de página esquece os pedidos que ainda não começaram; cache em `~/.cache/oma-spotify/capas` (pasta 0700, 12 KB por capa, teto de 50 MB, apaga as mais antigas a cada 20 gravações), memória com 64 capas e 96 desenhos prontos; falha de rede ou de conversão marca a URL e volta para a inicial até reiniciar. "Mostrar capas" nas Configurações (`"capas"` no config.json, padrão ligado). A URL da imagem fica no Item em memória e é tirada antes de gravar o `estado.json` (regra da 0.2.0). No `--demo`, URLs `demo:tipo:id` geram arte abstrata na hora (bolhas de luz, anel, listras, sol, faixa de luz, silhueta de artista), sem rede e sem arquivo de capa no repositório. Músicas Curtidas continua com o coração (a API não dá imagem para ela).
