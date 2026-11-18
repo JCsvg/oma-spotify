@@ -2,7 +2,7 @@
 
 TUI em Python (Textual) para ouvir e organizar o Spotify pelo terminal, no modelo do [herdr](https://github.com/herdrdev/herdr): janelas com borda fina, só a janela em foco acende na cor de destaque, biblioteca numerada à esquerda e tudo por teclado e por mouse. Em português do Brasil e nas cores do tema ativo do Omarchy. Fala com a Web API oficial, exige conta Premium e toca pelo player local do plugin OmaSpotify, sem precisar do Spotify de desktop. A letra sincronizada vem da [LRCLIB](https://lrclib.net).
 
-Versão 0.4.0.
+Versão 0.4.1.
 
 ## Capturas de tela
 
@@ -97,7 +97,7 @@ Dependências: `python` (3.13 ou mais novo) e `python-textual`. Opcionais: o plu
 ```bash
 cd packaging
 ./empacotar.sh              # gera o pacote em packaging/
-sudo pacman -U oma-spotify-0.4.0-1-any.pkg.tar.zst
+sudo pacman -U oma-spotify-0.4.1-1-any.pkg.tar.zst
 oma-spotify
 ```
 
