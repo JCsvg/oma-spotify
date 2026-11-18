@@ -12,12 +12,13 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.css.query import NoMatches
 from textual.widget import Widget
-from textual.widgets import Button, Label, Static
+from textual.widgets import Button, Label, OptionList, Static
+from textual.widgets.option_list import Option
 
 from oma_spotify.services.modelos import ErroSpotify, Item, mmss
-from oma_spotify.ui.capa import Capa
+from oma_spotify.ui.biblioteca import linha_item
 from oma_spotify.ui.navegacao import NavegacaoMixin
-from oma_spotify.ui.widgets import Tabela
+from oma_spotify.ui.widgets import ListaOpcoes, Tabela
 
 CONTEXTOS = ("album", "playlist", "artist", "show")
 TIPO = {"track": "Faixa", "album": "Álbum", "artist": "Artista", "playlist": "Playlist", "show": "Podcast", "episode": "Episódio",
@@ -39,117 +40,100 @@ def item_de_dict(d: dict) -> Item | None:
         return None
 
 
-# ---------------------------------------------------------------- cartas
-class CartaCapa(Widget, can_focus=True):
-    """Capa com nome e subtítulo. Clique ou Enter abre, `t` toca."""
-
-    DEFAULT_CSS = """
-    CartaCapa { width: 20; height: 11; padding: 0 1; }
-    CartaCapa.rapida { width: 1fr; height: 3; padding: 0; background: $surface; }
-    CartaCapa:hover { background: $accent 12%; }
-    CartaCapa:focus { background: $accent 30%; text-style: bold; }
-    """
-    BINDINGS = [Binding("enter", "abrir", "Abrir"), Binding("t", "tocar", "Tocar")]
-
-    def __init__(self, item: Item, rapida: bool = False, **kw) -> None:
-        super().__init__(**kw)
-        self.item = item
-        self.rapida = rapida
-        self.set_class(rapida, "rapida")
-
-    def render(self):
-        a = self.app
-        if self.rapida:
-            thumb = a.capas.texto(self.item, 6, 3, self.refresh, a.cor("accent")) if self.item.tipo != "curtidas" else a.miniatura_curtidas()
-            g = Table.grid(padding=(0, 1), expand=True)
-            g.add_column(width=6)
-            g.add_column(ratio=1, no_wrap=True, overflow="ellipsis")
-            g.add_row(thumb, Text("\n" + self.item.nome, style="bold"))
-            return g
-        t = a.capas.texto(self.item, 18, 8, self.refresh, a.cor("accent"))
-        t.append("\n")
-        t.append(Text(self.item.nome, style="bold", no_wrap=True, overflow="ellipsis"))
-        t.append("\n")
-        sub = self.item.sub or TIPO.get(self.item.tipo, "")
-        t.append(Text(sub, style=a.cor("muted"), no_wrap=True, overflow="ellipsis"))
-        return t
-
-    def on_click(self) -> None:
-        self.focus()
-        self.action_abrir()
-
-    def action_abrir(self) -> None:
-        if self.item.tipo in CONTEXTOS or self.item.tipo == "curtidas":
-            self.app.abrir_item(self.item)
-        else:
-            self.app.tocar_item(self.item)
-
-    def action_tocar(self) -> None:
-        self.app.tocar_item(self.item)
-
-
 # ---------------------------------------------------------------- início
-class VistaInicio(NavegacaoMixin, VerticalScroll):
+class VistaInicio(NavegacaoMixin, Vertical):
+    """Início em texto: seções (acesso rápido, recentes, programas, artistas...) numa lista só."""
+
     NOME = "Início"
-    RODAPE = ("abrir", "tocar")
+    RODAPE = ("select", "tocar_sel")
     DEFAULT_CSS = """
     VistaInicio { padding: 0 1; }
-    VistaInicio .secao { text-style: bold; margin: 1 0 0 0; }
-    VistaInicio #rapido { layout: grid; grid-size: 2; grid-gutter: 0 1; height: auto; }
-    VistaInicio .carrossel { height: 11; overflow-x: auto; overflow-y: hidden; }
-    VistaInicio .vazio { color: $text-muted; margin: 1 0; }
+    VistaInicio #aviso-inicio { color: $text-muted; height: auto; }
+    VistaInicio #lista-inicio { height: 1fr; }
     """
+    BINDINGS = [Binding("t", "tocar_sel", "Tocar")]
 
     def __init__(self, **kw) -> None:
         super().__init__(**kw)
         self.dados: dict = {}
+        self.itens: dict[str, Item] = {}
 
     def compose(self) -> ComposeResult:
-        yield Label("Início", classes="secao")
-        yield Static("", id="aviso-inicio", classes="vazio")
+        yield Static("", id="aviso-inicio")
+        yield ListaOpcoes(id="lista-inicio")
 
     def focar_entrada(self) -> None:
-        for w in self.query(CartaCapa):
-            w.focus()
-            return
-        self.focus()  # ainda carregando: o foco fica na própria área
+        self.query_one("#lista-inicio", ListaOpcoes).focus()
 
-    async def mostrar(self, dados: dict) -> None:
+    def mostrar(self, dados: dict) -> None:
         """dados: rapido (lista), secoes [(titulo, itens)]."""
+        from rich.text import Text as T
         self.dados = dados
-        await self.query(".dinamico").remove()
-        rapido = dados.get("rapido", [])
+        lista = self.query_one("#lista-inicio", ListaOpcoes)
         aviso = self.query_one("#aviso-inicio", Static)
-        if not rapido and not any(i for _, i in dados.get("secoes", [])):
-            aviso.update(Text("Ainda não há nada por aqui. Toque algo, curta músicas ou crie playlists e o Início se enche.\n"
-                              "A API do Spotify não tem feed Home nem novos lançamentos: o Início usa só a sua biblioteca."))
+        secoes = [("Acesso rápido", dados.get("rapido", []))] + list(dados.get("secoes", []))
+        if not any(i for _, i in secoes):
+            aviso.update(T("Ainda não há nada por aqui. Toque algo, curta músicas ou crie playlists e o Início se enche.\n"
+                           "A API do Spotify não tem feed Home nem novos lançamentos: o Início usa só a sua biblioteca."))
             return
         aviso.update("")
-        if rapido:
-            grade = Vertical(*[CartaCapa(i, rapida=True) for i in rapido[:8]], id="rapido", classes="dinamico")
-            grade.styles.layout = "grid"
-            grade.styles.grid_size_columns = 4 if self.app.size.width >= 150 else 2
-            self.mount(grade)
-        for titulo, itens in dados.get("secoes", []):
+        atual = lista.highlighted
+        lista.clear_options()
+        self.itens = {}
+        muted = self.app.cor("muted")
+        for titulo, itens in secoes:
             if not itens:
                 continue
-            self.mount(Label(titulo, classes="secao dinamico"))
-            self.mount(Horizontal(*[CartaCapa(i) for i in itens[:20]], classes="carrossel dinamico"))
+            lista.add_option(Option(T(f"── {titulo} ──", style=f"bold {self.app.cor('accent')}"), disabled=True))
+            for i in itens[:20 if titulo != "Acesso rápido" else 8]:
+                chave = f"{len(self.itens)}"
+                self.itens[chave] = i
+                lista.add_option(Option(linha_item(i, muted, 0, max(self.size.width - 4, 10)), id=chave))
+        if lista.option_count and atual is None:
+            lista.highlighted = 1
+
+    def on_resize(self, ev=None) -> None:
+        if self.dados and self.is_mounted and self.size.width != getattr(self, "_larg", 0):
+            self._larg = self.size.width
+            self.mostrar(self.dados)
+
+    def selecionado(self) -> Item | None:
+        lista = self.query_one("#lista-inicio", ListaOpcoes)
+        n = lista.highlighted
+        if n is None:
+            return None
+        return self.itens.get(lista.get_option_at_index(n).id or "")
+
+    @on(OptionList.OptionSelected)
+    def _abrir(self, ev: OptionList.OptionSelected) -> None:
+        ev.stop()
+        i = self.itens.get(ev.option.id or "")
+        if i is None:
+            return
+        if i.tipo in CONTEXTOS or i.tipo == "curtidas":
+            self.app.abrir_item(i)
+        else:
+            self.app.tocar_item(i)
+
+    def action_tocar_sel(self) -> None:
+        i = self.selecionado()
+        if i is not None:
+            self.app.tocar_item(i)
 
 
 # ---------------------------------------------------------------- listas
 class VistaLista(NavegacaoMixin, Vertical):
-    """Página com cabeçalho (capa, título, tocar) e tabela. Serve a playlist, álbum, artista, curtidas, fila, busca..."""
+    """Página com cabeçalho (título, tocar) e tabela. Serve a playlist, álbum, artista, curtidas, fila, busca..."""
 
     NOME = "Lista"
     RODAPE = ("select_cursor", "tocar_sel", "fila_sel", "curtir_sel")
     DEFAULT_CSS = """
     VistaLista { padding: 0 1; }
     VistaLista #cab { height: auto; margin-bottom: 1; }
-    VistaLista #cab-txt { width: 1fr; height: auto; padding-left: 2; }
+    VistaLista #cab-txt { width: 1fr; height: auto; }
     VistaLista #tipo { color: $text-muted; }
     VistaLista #titulo-v { text-style: bold; color: $accent; }
-    VistaLista #botoes-cab { height: 3; margin-top: 1; }
+    VistaLista #botoes-cab { height: 1; margin-top: 1; }
     VistaLista #botoes-cab Button { margin-right: 1; }
     VistaLista #chips-v { height: 1; margin-bottom: 1; }
     VistaLista #chips-v Button { margin-right: 1; }
@@ -203,21 +187,20 @@ class VistaLista(NavegacaoMixin, Vertical):
 
     def compose(self) -> ComposeResult:
         tipo, titulo, sub = self.titulo()
-        grande = self.app.size.height >= 34
         with Horizontal(id="cab"):
-            yield Capa(16 if grande else 10, 8 if grande else 5, id="capa-v")
             with Vertical(id="cab-txt"):
                 yield Static(Text(tipo.upper(), style="dim"), id="tipo")
                 yield Static(Text(titulo), id="titulo-v")
                 yield Static(Text(sub, style=self.app.cor("muted")), id="sub-v")
                 with Horizontal(id="botoes-cab"):
-                    yield Button("▶ Tocar", id="tocar", variant="primary")
+                    yield Button("▶ Tocar", id="tocar", variant="primary", compact=True)
                     if self.item is not None:
-                        yield Button("♡ Salvar", id="salvar")
+                        yield Button("♡ Salvar", id="salvar", compact=True)
                     if self.vista["t"] == "top":
-                        yield Button("Período", id="periodo")
+                        yield Button("Período", id="periodo", compact=True)
                     if self.vista["t"] == "dispositivos":
-                        yield Button("Abrir o Spotify do PC", id="abrir-pc")
+                        yield Button("Iniciar o OmaSpotify", id="iniciar-plugin", compact=True)
+                        yield Button("Abrir o Spotify do PC", id="abrir-pc", compact=True)
         if self.chips():
             with Horizontal(id="chips-v"):
                 for cid, rot in self.chips():
@@ -241,13 +224,6 @@ class VistaLista(NavegacaoMixin, Vertical):
         t = self.query_one("#tabela", Tabela)
         t.add_columns(*self.colunas())
         self.query_one("#vazio").display = False
-        capa = self.query_one("#capa-v", Capa)
-        if self.item is not None:
-            capa.definir(self.item)
-        elif self.vista["t"] == "curtidas":
-            capa.definir(Item("oma:curtidas", "curtidas", "Músicas Curtidas"))
-        else:
-            capa.definir(Item("oma:" + self.vista["t"], "playlist", self.titulo()[1]))
         self.query_one("#remover").display = bool(self.item and self.item.tipo == "playlist" and self.item.meu)
         if self.item is None:
             self.query_one("#curtir").display = self.vista["t"] not in ("dispositivos",)
@@ -433,7 +409,7 @@ class VistaLista(NavegacaoMixin, Vertical):
                 self.recarregar()
             self.app.guardar_vista(self)
             return
-        {"abrir-pc": self.app.abrir_spotify_pc, "tocar": self.action_tocar_tudo, "salvar": self.action_salvar_pagina, "periodo": self.action_periodo,
+        {"abrir-pc": self.app.abrir_spotify_pc, "iniciar-plugin": self.app.iniciar_plugin, "tocar": self.action_tocar_tudo, "salvar": self.action_salvar_pagina, "periodo": self.action_periodo,
          "fila": self.action_fila_sel, "curtir": self.action_curtir_sel, "playlist": self.action_para_playlist,
          "remover": self.action_remover_sel, "atualizar": self.action_atualizar}.get(b, lambda: None)()
 
@@ -541,9 +517,9 @@ class VistaLista(NavegacaoMixin, Vertical):
 
 # ---------------------------------------------------------------- área central
 class AreaCentral(NavegacaoMixin, Vertical):
-    NOME = "Centro"
+    NOME = "Principal"
     RODAPE = ("select", "tocar_sel")
-    DEFAULT_CSS = "AreaCentral { width: 1fr; background: $surface; }"
+    DEFAULT_CSS = "AreaCentral { width: 1fr; }"
 
     def __init__(self, **kw) -> None:
         super().__init__(**kw)
@@ -579,6 +555,7 @@ class AreaCentral(NavegacaoMixin, Vertical):
             w = VistaLista(vista)
         self.atual = w
         self.mount(w)
+        self.border_subtitle = "Início" if t == "inicio" else "Configurações" if t == "config" else w.titulo()[1]
         if t == "inicio":
             self.app.carregar_inicio()
         if foco:

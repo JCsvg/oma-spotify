@@ -1,22 +1,22 @@
 # Maintainer: JCsvg
 #
 # Pacote local, construído a partir de um tarball gerado por `git archive`
-# (ver packaging/empacotar.sh). Depende de python, python-textual e python-pillow (repositório extra);
+# (ver packaging/empacotar.sh). Só depende de python e python-textual (repositório extra);
 # nada do AUR, nada vendorizado. O HTTP usa a biblioteca padrão.
 
 pkgname=oma-spotify
-pkgver=0.2.0
+pkgver=0.3.0
 pkgrel=1
-pkgdesc="Cliente de Spotify em TUI parecido com o Spotify Web, para Premium, com mouse e teclado"
+pkgdesc="Cliente de Spotify em TUI feito de janelas, para Premium, com mouse e teclado"
 arch=('any')
 url="https://github.com/JCsvg/oma-spotify"
 license=('MIT')
 depends=(
   'python>=3.13'
   'python-textual>=8'
-  'python-pillow'   # capas de álbum em meio-blocos (sem ele, o app mostra iniciais)
 )
 optdepends=(
+  'omaspotify: plugin Omarchy OmaSpotify, que traz o player local (dispositivo Connect) usado por padrão'
   'spotify: o app de desktop, aberto pelo botão "Abrir o Spotify do PC"'
 )
 makedepends=('python-build' 'python-installer' 'python-wheel' 'python-hatchling')

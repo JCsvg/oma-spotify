@@ -23,6 +23,7 @@ class Config:
         self.client_id = ""
         self.porta = PORTA_PADRAO
         self.abertura = True
+        self.tocar_por = "auto"  # auto, plugin, pc ou escolher
         self.carregar()
 
     @property
@@ -42,10 +43,11 @@ class Config:
             except (TypeError, ValueError):
                 pass
             self.abertura = bool(d.get("abertura", True))
+            self.tocar_por = d.get("tocar_por") if d.get("tocar_por") in ("auto", "plugin", "pc", "escolher") else "auto"
 
     def salvar(self) -> None:
         self.pasta.mkdir(parents=True, exist_ok=True)
-        self.arquivo.write_text(json.dumps({"client_id": self.client_id, "porta": self.porta, "abertura": self.abertura}, indent=1))
+        self.arquivo.write_text(json.dumps({"client_id": self.client_id, "porta": self.porta, "abertura": self.abertura, "tocar_por": self.tocar_por}, indent=1))
 
     @property
     def redirect(self) -> str:

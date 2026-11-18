@@ -1,4 +1,4 @@
-"""Barra superior, barra do player e menu da conta."""
+"""Janelas [1] Busca e [5] Player, e o menu da conta."""
 
 from __future__ import annotations
 
@@ -7,33 +7,31 @@ from textual import on
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
-from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label, Static
 
 from oma_spotify.services.modelos import mmss
-from oma_spotify.ui.capa import Capa
 from oma_spotify.ui.dialogos import _Base, _css
 from oma_spotify.ui.navegacao import NavegacaoMixin
 from oma_spotify.ui.widgets import Barra
 
 
 class BarraTopo(NavegacaoMixin, Horizontal):
-    NOME = "Barra superior"
+    NOME = "Busca"
     RODAPE = ("app.buscar", "botao_acionar")
     DEFAULT_CSS = """
     BarraTopo { height: 3; padding: 0 1; }
-    BarraTopo Button { min-width: 5; margin-right: 1; }
+    BarraTopo Button { margin-right: 1; }
     BarraTopo #busca { width: 1fr; }
     BarraTopo #conta { margin-left: 1; margin-right: 0; }
     """
     BINDINGS = [Binding("slash", "app.buscar", "Buscar", key_display="/")]
 
     def compose(self) -> ComposeResult:
-        yield Button("⌂", id="inicio", tooltip="Início")
-        yield Button("◀", id="voltar", tooltip="Voltar (Esc)")
-        yield Button("▶", id="avancar", tooltip="Avançar (Alt+])")
-        yield Input(placeholder="O que você quer ouvir?  ( / )", id="busca")
-        yield Button("Conta ▾", id="conta", tooltip="Dispositivos, configurações, sair")
+        yield Button("⌂ Início", id="inicio", compact=True, tooltip="Início (i)")
+        yield Button("◀", id="voltar", compact=True, tooltip="Voltar (Esc)")
+        yield Button("▶", id="avancar", compact=True, tooltip="Avançar (Alt+])")
+        yield Input(placeholder="O que você quer ouvir?  ( / )", id="busca", compact=True)
+        yield Button("Conta ▾", id="conta", compact=True, tooltip="Dispositivos, configurações, sair")
 
     def focar_entrada(self) -> None:
         self.query_one("#busca", Input).focus()
@@ -58,67 +56,61 @@ class BarraTopo(NavegacaoMixin, Horizontal):
         self.app.guardar("busca", ev.value)
 
 
-class BarraPlayer(NavegacaoMixin, Horizontal):
+class BarraPlayer(NavegacaoMixin, Vertical):
     NOME = "Player"
     RODAPE = ("play_pause", "proxima", "anterior", "curtir_tocando")
     DEFAULT_CSS = """
-    BarraPlayer { height: 4; padding: 0 1; }
-    BarraPlayer #esq { width: 1fr; }
-    BarraPlayer #meio { width: 2fr; }
-    BarraPlayer #dir { width: 1fr; }
-    BarraPlayer #mini { width: 8; height: 4; margin-right: 1; }
-    BarraPlayer #info { width: 1fr; height: 4; }
-    BarraPlayer #titulo, BarraPlayer #artista { height: 1; text-wrap: nowrap; text-overflow: ellipsis; }
-    BarraPlayer .controles { height: 1; align-horizontal: center; margin-top: 1; }
-    BarraPlayer .controles Button { margin: 0 1; }
+    BarraPlayer { height: 5; padding: 0 1; }
+    BarraPlayer #linha-info, BarraPlayer #linha-ctrl, BarraPlayer #linha-prog { height: 1; }
+    BarraPlayer #titulo { width: 1fr; text-wrap: nowrap; text-overflow: ellipsis; }
+    BarraPlayer #msg { width: auto; color: $warning; text-style: bold; }
+    BarraPlayer #linha-ctrl Button { margin-right: 1; }
     BarraPlayer #play { text-style: bold; background: $accent; color: $background; }
     BarraPlayer .ligado { color: $accent; text-style: bold; }
-    BarraPlayer #linha-prog { height: 1; }
+    BarraPlayer #espaco { width: 1fr; }
+    BarraPlayer #volume { width: 12; }
+    BarraPlayer #rot-vol { width: 5; text-align: right; margin-left: 1; }
     BarraPlayer #t-pos, BarraPlayer #t-dur { width: 6; }
     BarraPlayer #t-pos { text-align: right; margin-right: 1; }
     BarraPlayer #t-dur { margin-left: 1; }
-    BarraPlayer #botoes-dir { height: 1; align-horizontal: right; margin-top: 1; }
-    BarraPlayer #botoes-dir Button { margin-left: 1; }
-    BarraPlayer #linha-vol { height: 1; align-horizontal: right; }
-    BarraPlayer #volume { width: 14; }
-    BarraPlayer #rot-vol { width: 5; text-align: right; margin-right: 1; }
     """
     BINDINGS = [Binding("n", "app.proxima", "Próxima"), Binding("p", "app.anterior", "Anterior")]
     REPETIR = {"off": ("↻", "desligado"), "context": ("↻ lista", "contexto"), "track": ("↻ faixa", "faixa")}
 
     def compose(self) -> ComposeResult:
-        with Horizontal(id="esq"):
-            yield Capa(8, 4, id="mini")
-            with Vertical(id="info"):
-                yield Static("", id="titulo")
-                yield Static("", id="artista")
-                yield Button("♡ Curtir", id="curtir", compact=True)
-        with Vertical(id="meio"):
-            with Horizontal(classes="controles"):
-                yield Button("⇄", id="aleatorio", compact=True, tooltip="Aleatório (s)")
-                yield Button("|◀", id="anterior", compact=True, tooltip="Anterior (p)")
-                yield Button(" ▶ ", id="play", compact=True, tooltip="Play/pausa (Espaço)")
-                yield Button("▶|", id="proxima", compact=True, tooltip="Próxima (n)")
-                yield Button("↻", id="repetir", compact=True, tooltip="Repetir (r)")
-            with Horizontal(id="linha-prog"):
-                yield Static("0:00", id="t-pos")
-                yield Barra(id="progresso")
-                yield Static("0:00", id="t-dur")
-        with Vertical(id="dir"):
-            with Horizontal(id="botoes-dir"):
-                yield Button("Fila", id="fila", compact=True, tooltip="Fila (f)")
-                yield Button("Painel", id="btn-painel", compact=True, tooltip="Painel Tocando agora (Ctrl+P)")
-                yield Button("Dispositivos", id="disp", compact=True, tooltip="Dispositivos (d)")
-            with Horizontal(id="linha-vol"):
-                yield Static("Vol", id="rot-vol")
-                yield Barra(id="volume")
+        with Horizontal(id="linha-info"):
+            yield Static("", id="titulo")
+            yield Static("", id="msg")
+        with Horizontal(id="linha-ctrl"):
+            yield Button("⇄", id="aleatorio", compact=True, tooltip="Aleatório (s)")
+            yield Button("|◀", id="anterior", compact=True, tooltip="Anterior (p)")
+            yield Button(" ▶ ", id="play", compact=True, tooltip="Play/pausa (Espaço)")
+            yield Button("▶|", id="proxima", compact=True, tooltip="Próxima (n)")
+            yield Button("↻", id="repetir", compact=True, tooltip="Repetir (r)")
+            yield Button("♡", id="curtir", compact=True, tooltip="Curtir (c)")
+            yield Static("", id="espaco")
+            yield Button("Fila", id="fila", compact=True, tooltip="Fila (f)")
+            yield Button("Dispositivos", id="disp", compact=True, tooltip="Dispositivos (d)")
+            yield Button("−", id="vol-menos", compact=True, tooltip="Volume - (-)")
+            vol = Barra(id="volume")
+            vol.can_focus = False
+            yield vol
+            yield Button("+", id="vol-mais", compact=True, tooltip="Volume + (+)")
+            yield Static("", id="rot-vol")
+        with Horizontal(id="linha-prog"):
+            yield Static("0:00", id="t-pos")
+            yield Barra(id="progresso")
+            yield Static("0:00", id="t-dur")
 
     def focar_entrada(self) -> None:
         self.query_one("#play", Button).focus()
 
     def ajustar(self, largura: int) -> None:
-        self.query_one("#mini").display = largura >= 100
-        self.query_one("#btn-painel").display = largura >= 120
+        self.query_one("#volume").display = largura >= 100
+        self.query_one("#rot-vol").display = largura >= 100
+
+    def mensagem(self, txt: str) -> None:
+        self.query_one("#msg", Static).update(Text(txt) if txt else "")
 
     @on(Button.Pressed)
     def _botao(self, ev: Button.Pressed) -> None:
@@ -126,8 +118,8 @@ class BarraPlayer(NavegacaoMixin, Horizontal):
         a = self.app
         {"curtir": a.action_curtir_tocando, "aleatorio": a.action_aleatorio, "anterior": a.action_anterior,
          "play": a.action_play_pause, "proxima": a.action_proxima, "repetir": a.action_repetir,
-         "fila": lambda: a.navegar({"t": "fila"}), "btn-painel": a.action_painel,
-         "disp": lambda: a.navegar({"t": "dispositivos"})}.get(ev.button.id or "", lambda: None)()
+         "fila": lambda: a.navegar({"t": "fila"}), "disp": lambda: a.navegar({"t": "dispositivos"}),
+         "vol-menos": lambda: a.action_volume(-5), "vol-mais": lambda: a.action_volume(5)}.get(ev.button.id or "", lambda: None)()
 
     @on(Barra.Passo)
     def _passo(self, ev: Barra.Passo) -> None:
@@ -141,19 +133,17 @@ class BarraPlayer(NavegacaoMixin, Horizontal):
 
     def pintar(self, p, curtido: bool) -> None:
         q = self.query_one
+        q("#curtir", Button).label = "♥" if curtido else "♡"
+        q("#curtir", Button).set_class(curtido, "ligado")
         if p is None or p.item is None:
             q("#titulo", Static).update(Text("Nada tocando", style="bold"))
-            q("#artista", Static).update(Text("Abra um dispositivo", style=self.app.cor("muted")))
             q("#t-dur", Static).update("0:00")
             q("#progresso", Barra).definir(0)
             q("#play", Button).label = " ▶ "
             return
         it = p.item
-        q("#titulo", Static).update(Text(it.nome, style="bold", no_wrap=True, overflow="ellipsis"))
-        q("#artista", Static).update(Text(it.sub, style=self.app.cor("muted"), no_wrap=True, overflow="ellipsis"))
-        q("#mini", Capa).definir(it)
+        q("#titulo", Static).update(Text.assemble((it.nome, "bold"), (f"  {it.sub}" if it.sub else "", self.app.cor("muted"))))
         q("#t-dur", Static).update(mmss(it.dur_ms))
-        q("#curtir", Button).label = "♥ Curtida" if curtido else "♡ Curtir"
         q("#play", Button).label = " ▮▮ " if p.tocando else " ▶ "
         q("#aleatorio", Button).set_class(p.aleatorio, "ligado")
         txt, nome = self.REPETIR.get(p.repetir, ("↻", p.repetir))

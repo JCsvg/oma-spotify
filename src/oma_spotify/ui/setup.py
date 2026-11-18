@@ -19,6 +19,8 @@ from oma_spotify.ui.dialogos import Confirmar, Pedir
 from oma_spotify.ui.navegacao import NavegacaoMixin, RodapeEnxuto
 from oma_spotify.ui.base import Pagina
 
+TOCAR_POR = {"auto": "automático (plugin OmaSpotify se instalado, senão Spotify do PC)", "plugin": "plugin OmaSpotify",
+             "pc": "Spotify do PC", "escolher": "escolher o dispositivo"}
 PAINEL = "https://developer.spotify.com/dashboard"
 CRIAR = "https://developer.spotify.com/dashboard/create"
 
@@ -264,6 +266,7 @@ class PaginaConfig(Pagina):
         with Vertical(id="acoes-config"):
             yield Button("Client ID", id="cid")
             yield Button("Porta do callback", id="porta")
+            yield Button("Tocar por", id="tocar-por")
             yield Button("Mostrar a abertura", id="abertura")
             yield Button("Verificar configuração", id="verificar")
             yield Button("Entrar de novo (guia de configuração)", id="guia")
@@ -277,8 +280,10 @@ class PaginaConfig(Pagina):
         conectado = self.app.armazem.logado() if not self.app.demo else True
         linhas = [f"Client ID: {c.client_id or 'não definido'}", f"Redirect URI (adicione no painel do app): {c.redirect}",
                   f"Porta do callback: {c.porta}", f"Mostrar a abertura: {'sim' if c.abertura else 'não'}",
+                  f"Tocar por: {TOCAR_POR[c.tocar_por]}",
                   f"Conta: {'conectada' + (' (demonstração)' if self.app.demo else '') if conectado else 'não conectada'}"]
         self.query_one("#resumo", Static).update(Text("\n".join(linhas)))
+        self.query_one("#tocar-por", Button).label = f"Tocar por: {TOCAR_POR[c.tocar_por]}"
         self.query_one("#abertura", Button).label = f"Mostrar a abertura: {'sim' if c.abertura else 'não'}"
 
     def focar_entrada(self) -> None:
@@ -307,6 +312,11 @@ class PaginaConfig(Pagina):
                 elif v:
                     self.app.notify("Use um número entre 1024 e 65535.", severity="error")
             self.app.push_screen(Pedir("Porta do callback", str(c.porta), "O Redirect URI muda junto, e precisa estar igual no painel."), fim)
+        elif b == "tocar-por":
+            ordem = list(TOCAR_POR)
+            c.tocar_por = ordem[(ordem.index(c.tocar_por) + 1) % len(ordem)]
+            c.salvar()
+            self.recarregar()
         elif b == "abertura":
             c.abertura = not c.abertura
             c.salvar()

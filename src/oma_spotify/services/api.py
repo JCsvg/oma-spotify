@@ -23,21 +23,11 @@ def _nomes(lst) -> str:
     return ", ".join(a.get("name", "") for a in (lst or []) if a)
 
 
-def _capa(o: dict) -> str:
-    """URL da menor imagem com pelo menos 160 px (ou a primeira)."""
-    imgs = o.get("images") or (o.get("album") or {}).get("images") or (o.get("show") or {}).get("images") or []
-    imgs = [i for i in imgs if isinstance(i, dict) and i.get("url")]
-    bons = [i for i in imgs if (i.get("width") or 0) >= 160]
-    if bons:
-        return min(bons, key=lambda i: i["width"])["url"]
-    return imgs[0]["url"] if imgs else ""
-
-
 def item_de(o: dict | None, meu_id: str = "") -> Item | None:
     if not o or not o.get("uri"):
         return None
     t = o.get("type", "track")
-    base = dict(uri=o["uri"], tipo=t, nome=o.get("name", "(sem nome)"), id=o.get("id", ""), capa=_capa(o))
+    base = dict(uri=o["uri"], tipo=t, nome=o.get("name", "(sem nome)"), id=o.get("id", ""))
     if t == "track":
         return Item(**base, sub=_nomes(o.get("artists")), extra=(o.get("album") or {}).get("name", ""), dur_ms=o.get("duration_ms", 0))
     if t == "episode":

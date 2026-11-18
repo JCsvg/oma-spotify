@@ -30,7 +30,6 @@ class Item:
     dur_ms: int = 0
     id: str = ""
     meu: bool = False  # playlist do próprio usuário (editável)
-    capa: str = ""  # URL da imagem (só no cliente real)
 
 
 @dataclass

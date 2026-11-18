@@ -130,25 +130,3 @@ class EscolherPlaylist(_Base):
 
     def on_button_pressed(self, ev: Button.Pressed) -> None:
         self.dismiss(None)
-
-
-class SemDispositivo(_Base):
-    """404 do player: nada tocando em lugar nenhum."""
-
-    DEFAULT_CSS = _css("SemDispositivo")
-
-    def compose(self) -> ComposeResult:
-        with Vertical(id="caixa"):
-            yield Label("Nenhum dispositivo do Spotify ativo", classes="titulo")
-            yield Static("Para tocar, o Spotify precisa estar aberto em algum aparelho "
-                         "(o app do PC, o celular...). Abra o do PC ou escolha um dispositivo.")
-            with Horizontal(id="botoes"):
-                yield Button("Abrir o Spotify do PC", id="abrir", variant="primary")
-                yield Button("Escolher dispositivo", id="escolher")
-                yield Button("Fechar", id="nao")
-
-    def on_mount(self) -> None:
-        self.query_one("#abrir", Button).focus()
-
-    def on_button_pressed(self, ev: Button.Pressed) -> None:
-        self.dismiss(ev.button.id)

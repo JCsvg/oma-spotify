@@ -24,19 +24,21 @@ from oma_spotify.services.auth import Armazem, Sessao
 from oma_spotify.services.diagnostico import HOST_SPOTIFY
 from oma_spotify.services.falso import ClienteFalso
 from oma_spotify.services.modelos import ErroSpotify, Item
+from oma_spotify.services.plugin import DICA_CONFIGURAR, PluginOmaSpotify
 from oma_spotify.ui.abertura import Abertura
 from oma_spotify.ui.barras import BarraPlayer, BarraTopo, MenuConta
 from oma_spotify.ui.biblioteca import CURTIDAS, Biblioteca
-from oma_spotify.ui.capa import Capas
-from oma_spotify.ui.central import CONTEXTOS, AreaCentral, VistaInicio, VistaLista, item_de_dict, serializar
-from oma_spotify.ui.dialogos import EscolherPlaylist, Pedir, SemDispositivo
+from oma_spotify.ui.central import CONTEXTOS, AreaCentral, VistaInicio, VistaLista, serializar
+from oma_spotify.ui.dialogos import EscolherPlaylist, Pedir
 from oma_spotify.ui.navegacao import AjudaAba, RodapeEnxuto, eh_controle
 from oma_spotify.ui.painel import PainelAgora
 from oma_spotify.ui.setup import TelaSetup
 from oma_spotify.ui.widgets import Barra, Tabela
 
 AREAS = ("topo", "bib", "centro", "painel", "player")
-LARGURA_PAINEL, LARGURA_BIB = 120, 100
+LARGURA_PAINEL = 120
+JANELAS = {"1": "topo", "2": "bib", "3": "centro", "4": "painel", "5": "player"}
+TITULOS = {"topo": "[1] Busca", "bib": "[2] Biblioteca", "centro": "[3] Principal", "painel": "[4] Fila", "player": "[5] Player"}
 
 
 def abrir_spotify_do_pc() -> bool:
@@ -71,14 +73,18 @@ class OmaSpotifyApp(App[None]):
     Screen { background: $background; color: $foreground; }
     Button { min-width: 0; }
     #corpo { height: 1fr; }
-    #bib, #painel { height: 1fr; }
-    #centro { height: 1fr; }
-    DataTable { height: 1fr; background: $surface; }
+    #bib { width: 30; }
+    #painel { width: 34; }
+    #centro { width: 1fr; }
+    .janela { border: round $primary 35%; border-title-color: $text-muted; border-title-align: left; border-subtitle-color: $text-muted; }
+    .janela:focus-within { border: round $accent; border-title-color: $accent; border-title-style: bold; border-subtitle-color: $accent; }
+    DataTable { height: 1fr; background: transparent; }
     DataTable > .datatable--cursor { background: $accent 28%; color: $foreground; text-style: bold; }
     DataTable:focus > .datatable--cursor { background: $accent 40%; color: $foreground; text-style: bold; }
-    OptionList { border: none; padding: 0; }
+    OptionList { border: none; padding: 0; background: transparent; }
     OptionList > .option-list--option-highlighted { background: $accent 28%; }
     OptionList:focus > .option-list--option-highlighted { background: $accent 40%; text-style: bold; }
+    Input.-textual-compact { border: none; padding: 0 1; }
     #resumo, #diag-config { height: auto; margin: 1 0; }
     #acoes-config Button { margin-bottom: 1; }
     #titulo-setup { text-style: bold; color: $accent; margin: 0 1 1 1; }
@@ -95,10 +101,11 @@ class OmaSpotifyApp(App[None]):
     """
     BINDINGS = [
         Binding("q", "quit", "Sair"),
-        Binding("alt+left,alt+h", "area(-1, 0)", "Área à esquerda", key_display="Alt+←", priority=True),
-        Binding("alt+right,alt+l", "area(1, 0)", "Área à direita", key_display="Alt+→", priority=True),
-        Binding("alt+up,alt+k", "area(0, -1)", "Área acima", key_display="Alt+↑", priority=True),
-        Binding("alt+down,alt+j", "area(0, 1)", "Área abaixo", key_display="Alt+↓", priority=True),
+        Binding("ctrl+left,ctrl+h,alt+left,alt+h", "janela(-1, 0)", "Janela à esquerda", key_display="Ctrl+←", priority=True),
+        Binding("ctrl+right,ctrl+l,alt+right,alt+l", "janela(1, 0)", "Janela à direita", key_display="Ctrl+→", priority=True),
+        Binding("ctrl+up,ctrl+k,alt+up,alt+k", "janela(0, -1)", "Janela acima", key_display="Ctrl+↑", priority=True),
+        Binding("ctrl+down,ctrl+j,alt+down,alt+j", "janela(0, 1)", "Janela abaixo", key_display="Ctrl+↓", priority=True),
+        *[Binding(k, f"ir_janela('{n}')", f"Janela {k}", show=False) for k, n in JANELAS.items()],
         Binding("alt+left_square_bracket", "voltar_historico", "Voltar", key_display="Alt+[", priority=True),
         Binding("alt+right_square_bracket", "avancar_historico", "Avançar", key_display="Alt+]", priority=True),
         Binding("left,h", "mover(-1, 0)", show=False),
@@ -120,10 +127,6 @@ class OmaSpotifyApp(App[None]):
         Binding("slash", "buscar", "Buscar", key_display="/"),
         Binding("ctrl+p", "painel", "Painel", priority=True),
         Binding("ctrl+b", "coluna", "Biblioteca", priority=True),
-        Binding("ctrl+right,ctrl+l", "botao(1)", "Próximo botão", key_display="Ctrl+→", priority=True),
-        Binding("ctrl+left,ctrl+h", "botao(-1)", "Botão anterior", key_display="Ctrl+←", priority=True),
-        Binding("ctrl+down,ctrl+j", "secao(1)", "Próxima seção", key_display="Ctrl+↓", priority=True),
-        Binding("ctrl+up,ctrl+k", "secao(-1)", "Seção anterior", key_display="Ctrl+↑", priority=True),
         Binding("ctrl+@,ctrl+space,ctrl+at,f1", "ajuda_aba", "Ajuda", key_display="Ctrl+Espaço", priority=True),
         Binding("ctrl+enter", "botao_acionar", "Apertar botão", key_display="Ctrl+Enter", priority=True),
     ]
@@ -131,7 +134,7 @@ class OmaSpotifyApp(App[None]):
     def __init__(self, cliente=None, demo: bool = False, estado: Estado | None = None, config: Config | None = None,
                  armazem: Armazem | None = None, abertura: bool = True, abridor=None, lancador=None,
                  espera_dispositivo: float = 1.5, copiador=None, tempo_login: float = 180.0, tempo_ajuda: float = 15.0,
-                 url_rede: str | None = None, capas: Capas | None = None) -> None:
+                 url_rede: str | None = None, plugin=None) -> None:
         super().__init__()
         self.demo = demo
         self.estado = estado or Estado()
@@ -146,7 +149,10 @@ class OmaSpotifyApp(App[None]):
         self.copiador = copiador or copiar_para_area
         self.tempo_login, self.tempo_ajuda = tempo_login, tempo_ajuda
         self.url_rede = url_rede or HOST_SPOTIFY
-        self.capas = capas or Capas(demo, chamar=lambda f, *a: self.call_from_thread(f, *a))
+        self.plugin = plugin or PluginOmaSpotify()
+        self._garantindo = False
+        self._ultima_garantia = -100.0
+        self.espera_max = 30.0
         self.paleta = tema.ler()
         self.pronto = False
         self.salvo: dict = {}
@@ -168,17 +174,19 @@ class OmaSpotifyApp(App[None]):
 
     # ------------------------------------------------------------ montagem
     def compose(self) -> ComposeResult:
-        yield BarraTopo(id="topo")
+        yield BarraTopo(id="topo", classes="janela")
         with Horizontal(id="corpo"):
-            yield Biblioteca(id="bib")
-            yield AreaCentral(id="centro")
-            yield PainelAgora(id="painel")
-        yield BarraPlayer(id="player")
+            yield Biblioteca(id="bib", classes="janela")
+            yield AreaCentral(id="centro", classes="janela")
+            yield PainelAgora(id="painel", classes="janela")
+        yield BarraPlayer(id="player", classes="janela")
         yield RodapeEnxuto()
 
     def on_mount(self) -> None:
         self.register_theme(tema.tema_textual("omarchy"))
         self.theme = "omarchy"
+        for nome, titulo in TITULOS.items():
+            self.query_one(f"#{nome}").border_title = titulo
         self.estado.carregar()
         self.salvo = dict(self.estado.dados)
         self.set_interval(0.25, self._tick)
@@ -235,9 +243,6 @@ class OmaSpotifyApp(App[None]):
         return {"success": p["green"], "warning": p["yellow"], "error": p["red"], "accent": p["accent"],
                 "muted": p.get("dark_foreground", p["muted"])}.get(nome, p["foreground"])
 
-    def miniatura_curtidas(self):
-        return self.query_one(Biblioteca).miniatura_curtidas()
-
     # ------------------------------------------------------------ layout
     def on_resize(self, ev=None) -> None:
         if self.pronto:
@@ -248,15 +253,14 @@ class OmaSpotifyApp(App[None]):
         painel = self.query_one(PainelAgora)
         bib = self.query_one(Biblioteca)
         painel.display = self.painel_pref and w >= LARGURA_PAINEL
-        bib.alternar_recolhida(self.coluna_pref or w < LARGURA_BIB) if bib.recolhida != (self.coluna_pref or w < LARGURA_BIB) else None
-        bib.styles.width = 10 if bib.recolhida else (34 if w >= 150 else 30)
-        painel.styles.width = 38 if w >= 150 else 34
-        painel.ajustar(h)
+        bib.display = not self.coluna_pref
+        bib.styles.width = 24 if w < 100 else 30 if w < 150 else 38
+        painel.styles.width = 34 if w < 150 else 42
         self.query_one(BarraPlayer).ajustar(w)
 
     def action_painel(self) -> None:
         if self.size.width < LARGURA_PAINEL:
-            self.notify(f"O terminal precisa de ao menos {LARGURA_PAINEL} colunas para o painel Tocando agora.")
+            self.notify(f"O terminal precisa de ao menos {LARGURA_PAINEL} colunas para a janela [4] Fila.")
             return
         self.painel_pref = not self.painel_pref
         self.guardar("painel", self.painel_pref)
@@ -268,6 +272,8 @@ class OmaSpotifyApp(App[None]):
         self.coluna_pref = not self.coluna_pref
         self.guardar("coluna", self.coluna_pref)
         self.ajustar()
+        if self.coluna_pref and self.nome_area(self.focused) == "bib":
+            self.focar_area("centro")
 
     # ------------------------------------------------------------ conta
     def nova_sessao(self) -> Sessao:
@@ -433,21 +439,45 @@ class OmaSpotifyApp(App[None]):
         else:
             w.focar_entrada()
 
-    def action_area(self, dx: int, dy: int) -> None:
-        if len(self.screen_stack) > 1:
+    def action_ir_janela(self, nome: str) -> None:
+        """Teclas 1 a 5: salta direto para a janela."""
+        if len(self.screen_stack) > 1 or isinstance(self.focused, Input):
+            return
+        if nome == "painel" and not self._area_widget("painel").display:
+            self.action_painel()
+            if not self._area_widget("painel").display:
+                return
+        if nome == "bib" and not self._area_widget("bib").display:
+            self.action_coluna()
+        self.focar_area(nome)
+
+    def action_janela(self, dx: int, dy: int) -> None:
+        """Ctrl+setas e Ctrl+hjkl: foco para a janela mais próxima na direção, pela posição na tela."""
+        if len(self.screen_stack) > 1:  # em diálogos, os mesmos atalhos andam entre botões e seções
+            self.action_botao(dx) if dx else self.action_secao(dy)
             return
         atual = self.nome_area(self.focused) or "centro"
-        meio = [n for n in ("bib", "centro", "painel") if self._area_widget(n).display]
-        if dy < 0:
-            dest = "topo" if atual in meio or atual == "player" and False else ("centro" if atual == "player" else "topo")
-        elif dy > 0:
-            dest = "centro" if atual == "topo" else "player"
-        else:
-            if atual not in meio:
-                return
-            i = max(0, min(len(meio) - 1, meio.index(atual) + dx))
-            dest = meio[i]
-        self.focar_area(dest)
+        fr = self._area_widget(atual).region
+        fcx, fcy = fr.x + fr.width / 2, fr.y + fr.height / 2
+        melhor, chave = None, None
+        for n in AREAS:
+            w = self._area_widget(n)
+            if n == atual or not w.display or w.region.area == 0:
+                continue
+            r = w.region
+            cx, cy = r.x + r.width / 2, r.y + r.height / 2
+            if dx:
+                if (cx - fcx) * dx <= 0:
+                    continue
+                k = (abs(cx - fcx) + (0 if fr.y < r.bottom and r.y < fr.bottom else 1000), abs(cy - fcy))
+            else:
+                if (cy - fcy) * dy <= 0:
+                    continue
+                k = (abs(cy - fcy) + (0 if fr.x < r.right and r.x < fr.right else 1000), abs(cx - fcx))
+            if chave is None or k < chave:
+                melhor, chave = n, k
+        if melhor is not None:
+            self.focar_area(melhor)
 
     def nav_da_aba(self):
         if len(self.screen_stack) > 1:
@@ -460,7 +490,7 @@ class OmaSpotifyApp(App[None]):
         if action == "ajuda_aba":
             return self.nav_da_aba() is not None or isinstance(self.screen, AjudaAba)
         if len(self.screen_stack) > 1 and not isinstance(self.screen, AjudaAba) and action in (
-                "area", "voltar_historico", "avancar_historico", "painel", "coluna", "ir", "buscar", "play_pause", "proxima",
+                "janela", "ir_janela", "voltar_historico", "avancar_historico", "painel", "coluna", "ir", "buscar", "play_pause", "proxima",
                 "anterior", "aleatorio", "repetir", "volume", "curtir_tocando"):
             return False
         return True
@@ -572,15 +602,94 @@ class OmaSpotifyApp(App[None]):
         self.em_thread(lambda: func(*args), fim)
 
     def _sem_dispositivo(self, repetir) -> None:
-        if isinstance(self.screen, SemDispositivo):
+        """404 sem dispositivo ativo: tenta sozinho o alvo configurado, sem diálogo."""
+        if time.monotonic() - self._ultima_garantia < 10:  # acabou de tentar: não entra em laço
+            self.msg_player("Ainda sem dispositivo ativo. Veja a página Dispositivos (d).", 10)
             return
+        self.garantir(self.modo_tocar(), repetir)
 
-        def fim(r):
-            if r == "abrir":
-                self.abrir_spotify_pc(repetir)
-            elif r == "escolher":
-                self.navegar({"t": "dispositivos"})
-        self.push_screen(SemDispositivo(), fim)
+    # ------------------------------------------------------------ onde tocar (plugin, PC ou escolha)
+    def modo_tocar(self) -> str:
+        m = self.config.tocar_por
+        if m == "auto":
+            return "plugin" if self.plugin.instalado() else "pc" if shutil.which("spotify") else "escolher"
+        return m
+
+    def msg_player(self, txt: str, segundos: float = 0) -> None:
+        try:
+            self.query_one(BarraPlayer).mensagem(txt)
+        except Exception:
+            return
+        self._msg_id = getattr(self, "_msg_id", 0) + 1
+        n = self._msg_id
+        if segundos:
+            self.set_timer(segundos, lambda: self.msg_player("") if getattr(self, "_msg_id", 0) == n else None)
+
+    def iniciar_plugin(self) -> None:
+        self.garantir("plugin", None)
+
+    def abrir_spotify_pc(self, depois=None) -> None:
+        self.garantir("pc", depois)
+
+    def garantir(self, modo: str, depois=None) -> None:
+        """Acha ou inicia o dispositivo do alvo, transfere a reprodução para ele e repete a ação pedida."""
+        if self._garantindo or not self.conectado:
+            return
+        if modo == "escolher":
+            self.navegar({"t": "dispositivos"})
+            self.msg_player("Escolha um dispositivo na página Dispositivos.", 10)
+            return
+        self._garantindo = True
+        self._ultima_garantia = time.monotonic()
+        c = self.cliente
+        plugin = modo == "plugin"
+
+        def alvo(ds):
+            return next((d for d in ds if (self.plugin.eh_dispositivo(d) if plugin else d.tipo.lower() == "computer")), None)
+
+        def status(txt):
+            self.call_from_thread(self.msg_player, txt)
+
+        def preparar():
+            d = alvo(c.dispositivos())
+            if d is None:
+                if plugin:
+                    if not self.plugin.instalado():
+                        raise ErroSpotify("Plugin OmaSpotify não encontrado. Instale-o ou mude em Configurações (Tocar por).")
+                    status("Iniciando o player do OmaSpotify...")
+                    if not self.plugin.ativo() and not self.plugin.iniciar():
+                        raise ErroSpotify("Não consegui iniciar o OmaSpotify. " + DICA_CONFIGURAR)
+                else:
+                    if not self.lancador():
+                        raise ErroSpotify("Comando spotify não encontrado. Instale o Spotify do PC ou mude em Configurações (Tocar por).")
+                    status("Abrindo o Spotify do PC...")
+                for _ in range(max(1, int(self.espera_max / max(self.espera_dispositivo, 0.01)))):
+                    time.sleep(self.espera_dispositivo)
+                    d = alvo(c.dispositivos())
+                    if d:
+                        break
+                else:
+                    raise ErroSpotify(("O player do OmaSpotify não apareceu. " + DICA_CONFIGURAR) if plugin
+                                      else "O Spotify do PC não apareceu. Entre nele com a mesma conta.")
+            c.transferir(d.id, False)
+            return d
+
+        def fim(d, erro):
+            self._garantindo = False
+            if erro:
+                self.msg_player(str(erro), 15)
+                self.notify(str(erro), severity="warning", timeout=10)
+                return
+            self.msg_player(f"Tocando por {d.nome}", 4)
+            a = self.query_one(AreaCentral).atual
+            if isinstance(a, VistaLista):
+                a.recarregar()
+            if depois:
+                depois()
+            else:
+                self._poll(forcar=True)
+        self.msg_player("Procurando o player..." if not plugin else "Procurando o player do OmaSpotify...")
+        self.em_thread(preparar, fim)
 
     # ------------------------------------------------------------ biblioteca e início
     def carregar_biblioteca(self) -> None:
@@ -639,10 +748,10 @@ class OmaSpotifyApp(App[None]):
                       ("Mais ouvidos", seguro(c.mais_ouvidos, "artists", "medium_term")[:20])]
             return {"rapido": rapido, "secoes": secoes}
 
-        async def depois(r, erro):
+        def depois(r, erro):
             atual = self.query_one(AreaCentral).atual
             if isinstance(atual, VistaInicio) and r:
-                await atual.mostrar(r)
+                atual.mostrar(r)
         self.em_thread(trabalho, depois)
 
     # ------------------------------------------------------------ reprodução
@@ -814,35 +923,6 @@ class OmaSpotifyApp(App[None]):
             if isinstance(a, VistaLista):
                 a.recarregar()
         self.executar(f"Transferir para {d.nome}", self.cliente.transferir, d.id, ok=f"Tocando em {d.nome}", depois=depois)
-
-    def abrir_spotify_pc(self, depois=None) -> None:
-        """Roda `spotify`, espera ele aparecer como dispositivo e transfere a reprodução."""
-        if not self.lancador():
-            self.notify("Não achei o comando spotify neste computador. Instale o Spotify do PC.", severity="error", timeout=8)
-            return
-        self.notify("Abrindo o Spotify do PC. Espere ele aparecer na lista...", timeout=6)
-
-        def esperar():
-            for _ in range(30):
-                time.sleep(self.espera_dispositivo)
-                ds = self.cliente.dispositivos()
-                if ds:
-                    d = next((x for x in ds if x.tipo.lower() == "computer"), ds[0])
-                    self.cliente.transferir(d.id, False)
-                    return d
-            raise ErroSpotify("O Spotify do PC não apareceu em 45 segundos. Entre nele com a mesma conta e tente de novo.")
-
-        def fim(d, erro):
-            if erro:
-                self.notify(str(erro), severity="error", timeout=8)
-                return
-            self.notify(f"Spotify do PC pronto: {d.nome}")
-            a = self.query_one(AreaCentral).atual
-            if isinstance(a, VistaLista):
-                a.recarregar()
-            if depois:
-                depois()
-        self.em_thread(esperar, fim)
 
     # ------------------------------------------------------------ saída
     async def action_quit(self) -> None:
