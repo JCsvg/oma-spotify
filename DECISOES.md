@@ -74,7 +74,7 @@ Pedido: interface com a localização das coisas do Spotify Web, sem abas, naveg
 - **Busca:** a caixa fica na barra superior; o centro mostra os resultados com chips Tudo, Músicas, Álbuns, Artistas, Playlists e Podcasts (`show` entrou nos tipos pedidos, limit 10).
 - **Prints:** o de 80x24 foi gerado pelo próprio Textual (`save_screenshot`, convertido com ImageMagick), porque a janela do foot no Hyprland ocupa a workspace inteira e não dá para reduzi-la sem mexer no gerenciador de janelas.
 
-## 12. 0.3.0: janelas, sem capas, tocar pelo plugin (pedido do JC)
+## 12. 0.3.0: janelas, sem capas, tocar pelo plugin (pedido do JC; a parte de janelas e navegação foi SUPERADA pela seção 13, o plugin continua valendo)
 
 Feedback do JC sobre a 0.2.0: não quer algo idêntico ao Spotify Web, não quer imagens de álbum, quer cada parte como uma janela com borda e título, Ctrl+setas entre as janelas, e não gostou do diálogo "Nenhum dispositivo do Spotify ativo".
 
@@ -101,3 +101,52 @@ Desenho (`services/plugin.py`, `App.garantir`):
 5. Sem dispositivo ativo (404 `NO_ACTIVE_DEVICE`): o diálogo antigo foi removido. O app executa o passo acima sozinho e repete a ação pedida; se a segunda tentativa também falhar em até 10 s, mostra "Ainda sem dispositivo ativo" em vez de entrar em laço.
 
 Não testado com conta real: iniciar o serviço de verdade, o dispositivo aparecer para o Spotify e tocar por ele. Nos testes o serviço é falso (`PluginFalso`) e o cliente do Spotify também.
+
+## 13. 0.4.0: interface do design do JC (pedido do JC)
+
+Fonte: o README de design que o JC trouxe (mockup em 180x48, no modelo do herdr) e as imagens dele. O que o JC decidiu para esta rodada: sem imagens (texto ou glifo no lugar de capa e foto, com um ponto único para pôr imagem depois), tocar continua pelo plugin OmaSpotify como na 0.3.0, sem diálogo de "nenhum dispositivo", tudo em português do Brasil, respeitar os limites do modo de desenvolvimento e manter o app leve.
+
+### Estrutura (decisão do agente)
+
+- Janelas: `Topo`, `Biblioteca`, `Principal` (hospeda uma página por vez), `Tocando`, `FilaLetra`, `Player` e `Rodape`, em `ui/`. Topo, Biblioteca, Player e Rodapé sem borda; Principal, Tocando e Fila com `border: solid` na cor linha e, com foco, na cor de destaque (`:focus-within`). A Biblioteca mostra o foco no título.
+- `ui/lista.py`: uma lista virtualizada própria (Line API do Textual), usada em todas as listas e tabelas. Só desenha as linhas visíveis, aceita itens de mais de uma linha, cabeçalhos não selecionáveis, hover, marcação com Shift e Ctrl+clique, botão direito, clique de novo ou duplo clique para escolher. Substitui `DataTable` e `OptionList`, que não deixavam pintar a linha inteira com a barra `▌` e o fundo de seleção.
+- `ui/capa.py` é o ponto único das capas. Hoje desenha um bloco na cor do item (tirada das cores do tema por hash do URI) com a inicial, em letra grande quando cabe; artistas são redondos. Para imagem (Sixel, kitty, meio-bloco), basta trocar `linhas_capa` e `Capa.render`. Nenhuma URL de imagem é lida ou guardada.
+- `ui/fonte.py`: a fonte de 3 linhas do design, copiada do README de design, usada nos títulos grandes e no palco. Acentos somem.
+- `ui/icones.py`: os códigos Nerd Font da tabela do design e os caracteres simples (`"icones": "simples"`).
+- Botões são um widget próprio (`Botao`), não o `Button` do Textual, para ter uma linha só e as cores do design sem brigar com o CSS padrão.
+- `tema.py` calcula `oma-linha`, `oma-painel`, `oma-campo`, `oma-forte`, `oma-hover` e `oma-escuro` pelas misturas da tabela de cores. O texto mudo usa `dark_foreground` quando o tema tem (no tema atual o `muted` fica escuro demais para ler); sem ele, `muted`.
+
+### Navegação (pedido do JC, substitui a da seção 12)
+
+Ctrl+setas e Ctrl+hjkl vão para a janela daquele lado, escolhendo a que cruza a linha do cursor; do player para cima e do topo para baixo, a última janela de cima que teve foco. Tab e Shift+Tab na ordem topo, biblioteca, principal, tocando, fila, player. Setas e hjkl andam dentro da janela pela posição dos controles; numa lista, a ponta passa para o controle vizinho. Alt+←/→ troca aba ou página; Alt+↑/↓ move itens. As teclas de item (`t f p a y o P x u c`) valem em qualquer lista e cada janela ou página pode tratar do seu jeito (por exemplo, `x` tira da playlist sua, da sua fila, ou pede confirmação na biblioteca). No campo de busca, Ctrl+←/→ andam por palavra.
+
+Mudaram teclas da 0.3.0: anterior e próxima viraram `,` e `.` (o `p` agora é adicionar à playlist e o `n` é nova playlist), fila a seguir é `f`, remover é `x`, os números 1 a 9 abrem os itens fixados (não pulam mais para janelas) e o painel de dispositivos virou o diálogo `d`.
+
+### Decisões do agente que o JC pode vetar
+
+- **A sua fila**: a API não tira nem reordena a fila do Spotify, então o app tem a própria fila (como o design pede). Entrega uma faixa por vez com `POST /me/player/queue` quando faltam 12 s, ou antes de pular com `.`. A primeira já entregue não pode mais sair. Guardada no `estado.json` (até 50 faixas, só URI e nomes).
+- **Letra**: LRCLIB `GET /api/get` com o primeiro artista (com a lista inteira, a LRCLIB costuma não achar), só quando a aba letra ou o palco estão abertos. User-Agent `oma-spotify/0.4.0 (+https://github.com/JCsvg/oma-spotify)`, sem dado da conta. Falha de rede não fica em cache; 404 e instrumental ficam. Botão nas Configurações para desligar (`"letra": false`).
+- **Itens fixados** ficam em `config.json` (sobrevivem ao reboot; o `estado.json` mora num tmpfs). Até 9, só itens da biblioteca. No `--demo`, as seis playlists vêm fixadas e nada é gravado.
+- **`--demo` isolado**: usa `config.json` temporário e `estado.json` em `$XDG_RUNTIME_DIR/oma-spotify-demo`, para a demonstração não sujar o contexto nem a configuração reais.
+- **Contagens da página do artista** ("você curtiu N músicas dele, aparece em M playlists suas"): o app conta nas curtidas que já carregou (até 100) e nas faixas das suas playlists (até 24 playlists, com cache LRU). Com muitas playlists, a primeira abertura faz uma chamada por playlist.
+- **Ir para o artista ou álbum de uma faixa**: o modelo da faixa não guarda o id do artista; o app procura na biblioteca e, se não achar, faz uma busca `artist:"Nome"` (1 chamada).
+- **Acréscimos à API** (nada mudou no que já existia nem na autenticação): `nome_usuario` (`/me`), `mover_na_playlist` (`PUT /playlists/{id}/items` com `range_start`, `insert_before`, `range_length`), `inserir_na_playlist` (desfazer remoção, `POST` com `position`), `buscar` com tipos e `offset`, `volume` com `device_id`, `contexto` no player, `played_at` nas recentes, ano, grupo do álbum, descrição e colaborativa nos itens, e `appears_on` na discografia. Nada disso foi conferido ao vivo.
+
+### O que difere do design e por quê
+
+- **Sem imagens** (decisão do JC): capas e fotos são blocos com a inicial. O Tocando mantém o tamanho do design (32x16) para a proporção das janelas não mudar.
+- **Redirect URI com porta**: o design cadastra `http://127.0.0.1/callback` sem porta e escolhe uma porta livre na hora. Isso muda a autenticação, que o JC pediu para manter; o app continua mandando `http://127.0.0.1:8888/callback` (porta configurável).
+- **Token**: o design diz `~/.config/oma-spotify/`; o app guarda em `$XDG_STATE_HOME/oma-spotify/tokens.json` (como na 0.3.0), e a tela de primeiro acesso mostra o caminho real.
+- **Seus podcasts no início** mostram nome e editora, sem "quanto falta" nem "novo": isso exige o escopo `user-read-playback-position`, que o login não pede (pedir mudaria a autenticação e obrigaria a entrar de novo).
+- **Títulos no canto direito da borda** ("só na primeira vez", "z sai do zoom", "ctrl+p"): o Textual só põe o subtítulo embaixo, então eles aparecem no canto de baixo à direita.
+- **Carregando**: sem linhas pulsando; a página aparece quando os dados chegam (no demo é instantâneo).
+- **Sem internet**: não há aviso fixo no topo; cada chamada que falha mostra "Sem conexão com o Spotify" no aviso do canto.
+- **Arrastar faixas até uma playlist** (fase 2 no design) não foi feito.
+
+### Memória (pedido do JC durante a rodada)
+
+Medido com `--demo` num pseudo-terminal 180x48, lendo `VmRSS`: 0.3.0 com 48 a 51 MB em repouso e 95 MB depois de 25 rodadas de navegação e busca; 0.4.0 com 50 MB em repouso, 68 MB depois de 80 páginas e 20 buscas e 69 MB com o dobro (parou de crescer). Práticas: lista virtualizada, uma página montada por vez, histórico de 30, caches com teto (letras 12, playlists 24, busca refeita a cada página), imports preguiçosos (login, diálogos, palco, API real, LRCLIB, cliente falso), pool de 4 threads no lugar de uma thread por chamada (fechado ao sair), equalizador pausado quando a faixa para ou o terminal perde o foco, consulta ao player a cada 2 s com foco e a cada 10 s sem foco ou com diálogo aberto. `tests/integration/test_memoria.py` mede o processo real (tetos de 75 e 100 MB) e confere que navegar 50 páginas e buscar 20 vezes não deixa widgets nem mais de 25 MB para trás.
+
+### Capturas
+
+Geradas pelo próprio Textual (`save_screenshot`) e convertidas com `rsvg-convert`, trocando a fonte do SVG pela JetBrainsMono Nerd Font e marcando `xml:space="preserve"` (sem isso o rsvg come o espaço do começo de cada trecho e as colunas se juntam). Nenhuma captura da tela pessoal do JC.
