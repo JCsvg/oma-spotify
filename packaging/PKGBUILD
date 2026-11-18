@@ -5,7 +5,7 @@
 # nada do AUR, nada vendorizado. O HTTP usa a biblioteca padrão.
 
 pkgname=oma-spotify
-pkgver=0.4.1
+pkgver=0.5.0
 pkgrel=1
 pkgdesc="Cliente de Spotify em TUI no modelo do herdr, com letra sincronizada, para Premium, com mouse e teclado"
 arch=('any')
@@ -17,6 +17,7 @@ depends=(
 )
 # O plugin Omarchy OmaSpotify (player local, usado por padrão) não é um pacote do pacman: instale pelo próprio Omarchy.
 optdepends=(
+  'imagemagick: capas e fotos (sem ele, aparece a inicial)'
   'spotify: o app de desktop, segunda opção de player'
 )
 makedepends=('python-build' 'python-installer' 'python-wheel' 'python-hatchling')
