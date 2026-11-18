@@ -15,9 +15,9 @@ depends=(
   'python>=3.13'
   'python-textual>=8'
 )
+# O plugin Omarchy OmaSpotify (player local, usado por padrão) não é um pacote do pacman: instale pelo próprio Omarchy.
 optdepends=(
-  'omaspotify: plugin Omarchy OmaSpotify, que traz o player local (dispositivo Connect) usado por padrão'
-  'spotify: o app de desktop, aberto pelo botão "Abrir o Spotify do PC"'
+  'spotify: o app de desktop, segunda opção de player'
 )
 makedepends=('python-build' 'python-installer' 'python-wheel' 'python-hatchling')
 checkdepends=('python-pytest' 'python-pytest-asyncio')
