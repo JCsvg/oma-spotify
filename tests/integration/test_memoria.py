@@ -1,8 +1,9 @@
 """Memória: o app em repouso fica leve e não cresce ao navegar e buscar.
 
 Medição de referência (180x48, --demo, Python 3.13, Textual 8.2): 0.3.0 com 48 a 51 MB em repouso e 95 MB depois de
-25 rodadas de navegação e busca; 0.4.0 com 50 MB em repouso e 68 a 69 MB depois de 80 a 160 páginas e 20 a 40 buscas.
-Os tetos abaixo deixam folga para variação entre máquinas.
+25 rodadas de navegação e busca; 0.4.0 com 50 MB em repouso e 68 a 69 MB depois de 80 a 160 páginas e 20 a 40 buscas;
+0.5.0, com capas de verdade em meio-blocos, 53 a 55 MB em repouso e 80 a 81 MB depois de 80 a 160 páginas e 20 a 40
+buscas (a meta era no máximo 15 MB acima da 0.4.0). Os tetos abaixo deixam folga para variação entre máquinas.
 """
 
 import fcntl
@@ -21,8 +22,8 @@ import pytest
 
 from tests.conftest import pronto
 
-TETO_REPOUSO_MB = 75
-TETO_USO_MB = 100
+TETO_REPOUSO_MB = 70
+TETO_USO_MB = 95
 TETO_CRESCIMENTO_MB = 25
 
 P1 = {"uri": "spotify:playlist:p1", "tipo": "playlist", "nome": "Mesa de sexta", "id": "p1", "meu": True, "sub": "demo"}

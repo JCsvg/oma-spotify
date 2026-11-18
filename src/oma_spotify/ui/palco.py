@@ -102,7 +102,7 @@ class Palco(Horizontal):
             q("#pc-meta", Static).update("")
             return
         it = p.item
-        q("#pc-capa", Capa).definir(it.uri, it.tipo, it.extra or it.nome)
+        q("#pc-capa", Capa).definir(it.uri, it.tipo, it.extra or it.nome, it.img)
         w = q("#pc-esq").size.width
         if w and largura_grande(it.nome) <= w:
             q("#pc-titulo", Static).update(Text("\n".join(grande(it.nome)), style=a.cor("forte")))
@@ -123,7 +123,7 @@ class Palco(Horizontal):
         if prox is None:
             self.query_one("#pc-seguinte", Static).update(Text("nada na fila", style=a.cor("mudo")))
             return
-        capa = linhas_capa(prox.uri, prox.tipo, prox.extra or prox.nome, 4, 2, a.paleta)
+        capa = linhas_capa(prox.uri, prox.tipo, prox.extra or prox.nome, 4, 2, a.paleta, imagem=prox.img)
         l1 = capa[0] + Text("  ") + colunas([(Text(prox.nome, style=f"bold {a.cor('forte')}"), 0, "left"),
                                               (Text(mmss(prox.dur_ms), style=a.cor("mudo")), 5, "right")], w - 6)
         l2 = capa[1] + Text("  ") + ajustar(Text(prox.sub, style=a.cor("mudo")), w - 6)

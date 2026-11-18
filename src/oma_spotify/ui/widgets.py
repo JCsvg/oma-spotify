@@ -223,7 +223,7 @@ class Cartao(Widget, can_focus=True):
         linhas: list[Text] = []
         if self.modo == "atalho":
             cw = min(6, max(0, w // 4))
-            capa = linhas_capa(it.uri, it.tipo, it.nome, cw, h, a.paleta) if cw else []
+            capa = linhas_capa(it.uri, it.tipo, it.nome, cw, h, a.paleta, imagem=it.img) if cw else []
             eq = a.eq_texto() if tocando else ""
             for y in range(h):
                 t = capa[y].copy() if cw else Text("")
@@ -236,7 +236,7 @@ class Cartao(Widget, can_focus=True):
                 linhas.append(t)
         elif self.modo == "mini":
             cw = 4
-            capa = linhas_capa(it.uri, it.tipo, it.nome, cw, 2, a.paleta)
+            capa = linhas_capa(it.uri, it.tipo, it.nome, cw, 2, a.paleta, imagem=it.img)
             sub = self.sub or it.sub
             for y in range(h):
                 t = capa[y].copy() if y < 2 else Text(" " * cw)
@@ -250,7 +250,7 @@ class Cartao(Widget, can_focus=True):
         else:  # grande: capa em cima, nome e sub embaixo, centralizados
             ch = max(1, h - 2)
             cw = min(w, ch * 2)
-            capa = linhas_capa(it.uri, it.tipo, it.nome, cw, ch, a.paleta)
+            capa = linhas_capa(it.uri, it.tipo, it.nome, cw, ch, a.paleta, imagem=it.img)
             esq = (w - cw) // 2
             for y in range(ch):
                 linhas.append(Text(" " * esq) + capa[y] + Text(" " * (w - cw - esq)))

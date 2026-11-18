@@ -83,6 +83,9 @@ class Principal(Vertical):
         from oma_spotify.ui import paginas
         if self.pagina is not None:
             self.pagina.remove()
+        capas = getattr(self.app, "capas", None)
+        if capas is not None:
+            capas.cancelar_pendentes()  # as capas da página que saiu não são mais baixadas
         vista = vista_valida(vista) or {"t": "inicio"}
         self.vista = vista
         t = vista["t"]

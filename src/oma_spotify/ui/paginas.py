@@ -13,7 +13,7 @@ from textual.widgets import Input, Static
 
 from oma_spotify.services.modelos import ErroSpotify, Item, duracao_longa, mmss
 from oma_spotify.ui.biblioteca import CURTIDAS
-from oma_spotify.ui.capa import Capa
+from oma_spotify.ui.capa import Capa, linhas_capa
 from oma_spotify.ui.fonte import grande, largura_grande
 from oma_spotify.ui.icones import ic
 from oma_spotify.ui.lista import EstadoLinha, Lista, colunas
@@ -377,8 +377,14 @@ class Cabecalho(Horizontal):
         self.desc_txt = self.item.desc or ""
         self.meta = Text("")
 
+    def imagem(self) -> str:
+        if self.item.img:
+            return self.item.img
+        achado = next((i for i in self.app.dados_bib if i.uri == self.item.uri and i.img), None)
+        return achado.img if achado else ""
+
     def compose(self) -> ComposeResult:
-        yield Capa(self.item.uri, self.item.tipo, self.item.nome, self.redonda, id="cab-capa")
+        yield Capa(self.item.uri, self.item.tipo, self.item.nome, self.redonda, imagem=self.imagem(), id="cab-capa")
         with Vertical(id="cab-txt"):
             yield Static(TIPO_ROTULO.get(self.item.tipo, ""), id="cab-tipo")
             yield Static("", id="cab-titulo")
@@ -979,7 +985,7 @@ class PaginaBusca(Pagina):
         colunas_topo = []
         if melhor is not None:
             self.melhor = melhor
-            caixa = Vertical(Capa(melhor.uri, melhor.tipo, melhor.nome),
+            caixa = Vertical(Capa(melhor.uri, melhor.tipo, melhor.nome, imagem=melhor.img),
                              Static(realcar(melhor.nome, self.q, f"bold {a.cor('forte')}", a.cor("accent")), id="melhor-nome"),
                              Horizontal(Static(TIPO_ROTULO.get(melhor.tipo, ""), id="melhor-tipo"),
                                         Botao(f"{ic('tocar')} tocar", id="melhor-tocar", classes="cheio"), id="melhor-pe"),
@@ -990,6 +996,7 @@ class PaginaBusca(Pagina):
             cols = self._cols()
             l = Lista(lambda it, i, e: self._linha_musica(it, i, e, cols), alturas=lambda it: 2, id="musicas", classes="-auto")
             l.ao_clicar = lambda i, x: self._clique_musica(l, i, x)
+            l.com_capas = True
             l.definir(faixas[:n])
             mais = "mais 5 ›" if len(faixas) > n or len(faixas) >= 10 else ""
             colunas_topo.append(Vertical(Secao("músicas", mais, id="mais-track"), l, id="col-musicas"))
@@ -1050,10 +1057,11 @@ class PaginaBusca(Pagina):
         est = f"bold {a.cor('accent')}" if tocando else f"bold {a.cor('forte')}" if e.destacado else a.cor("forte")
         cor = Text(ic("curtida"), style=a.cor("accent")) if it.uri in self.curtidos else \
             Text(ic("nao_curtida"), style=a.cor("mudo")) if e.hover else Text("")
+        capa = linhas_capa(it.uri, it.tipo, it.extra or it.nome, 4, 2, a.paleta, imagem=it.img)
         l1 = colunas([(realcar(it.nome, self.q, est, a.cor("accent")), 0, "left"), (cor, 2, "left"),
-                      (Text(mmss(it.dur_ms), style=a.cor("mudo")), 5, "right")], w - 1)
-        l2 = colunas([(realcar(it.sub, self.q, a.cor("mudo"), a.cor("accent")), 0, "left")], w - 1)
-        return [Text(" ") + l1, Text(" ") + l2]
+                      (Text(mmss(it.dur_ms), style=a.cor("mudo")), 5, "right")], w - 7)
+        l2 = colunas([(realcar(it.sub, self.q, a.cor("mudo"), a.cor("accent")), 0, "left")], w - 7)
+        return [Text(" ") + capa[0] + Text("  ") + l1, Text(" ") + capa[1] + Text("  ") + l2]
 
     def _clique_musica(self, l: Lista, i: int, x: int) -> bool:
         w = l.scrollable_content_region.width

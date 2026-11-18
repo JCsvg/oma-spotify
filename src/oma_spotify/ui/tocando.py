@@ -61,7 +61,7 @@ class Tocando(Vertical):
             return
         it = p.item
         cur.display = it.tipo == "track"
-        q("#tc-capa", Capa).definir(it.uri, it.tipo, it.extra or it.nome)
+        q("#tc-capa", Capa).definir(it.uri, it.tipo, it.extra or it.nome, it.img)
         q("#tc-titulo", Static).update(Text(it.nome, overflow="ellipsis", no_wrap=True))
         cur.label = ic("curtida") if curtido else ic("nao_curtida")
         q("#tc-artista", Botao).label = it.sub

@@ -16,7 +16,7 @@ from oma_spotify.services.plugin import PluginOmaSpotify
 @pytest.fixture(autouse=True)
 def ambiente(tmp_path, monkeypatch):
     """Nenhum teste toca em config, tokens ou estado reais."""
-    for k, v in (("XDG_CONFIG_HOME", "cfg"), ("XDG_STATE_HOME", "state"), ("XDG_RUNTIME_DIR", "run")):
+    for k, v in (("XDG_CONFIG_HOME", "cfg"), ("XDG_STATE_HOME", "state"), ("XDG_RUNTIME_DIR", "run"), ("XDG_CACHE_HOME", "cache")):
         monkeypatch.setenv(k, str(tmp_path / v))
         (tmp_path / v).mkdir()
 

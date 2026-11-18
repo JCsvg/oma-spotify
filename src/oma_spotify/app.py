@@ -184,6 +184,10 @@ class OmaSpotifyApp(App[None]):
         self.url_rede = url_rede or HOST_SPOTIFY
         self.plugin = plugin or PluginOmaSpotify()
         self._letras = letras
+        from oma_spotify.services.capas import Capas
+        from oma_spotify.ui import capa as _capa
+        self.capas = Capas(agendar=self.em_thread, chegou=self.capa_chegou, ligado=self.config.capas)
+        _capa.PROVEDOR = self.capas
         self._exec = Trabalhadores(4)
         self._garantindo = False
         self._ultima_garantia = -100.0
@@ -542,7 +546,7 @@ class OmaSpotifyApp(App[None]):
             self._salvar_hist()
 
     def guardar_minha_fila(self) -> None:
-        self.guardar("minha_fila", [serializar(i) for i in self.minha_fila[:MAX_MINHA_FILA]])
+        self.guardar("minha_fila", [_sem_img(serializar(i)) for i in self.minha_fila[:MAX_MINHA_FILA]])
 
     # ------------------------------------------------------------ histórico de páginas
     def navegar(self, vista: dict, foco: bool = True) -> None:
@@ -564,7 +568,8 @@ class OmaSpotifyApp(App[None]):
         self.atualizar_trilha()
 
     def _salvar_hist(self) -> None:
-        self.guardar("hist", self.historico[-30:])
+        self.guardar("hist", [{**v, "item": _sem_img(v["item"])} if isinstance(v.get("item"), dict) else v
+                              for v in self.historico[-30:]])
         self.guardar("pos", self.pos)
 
     def _mostrar_vista(self, vista: dict, foco: bool = True) -> None:
@@ -838,6 +843,22 @@ class OmaSpotifyApp(App[None]):
             except Exception:
                 pass
         self._exec.submit(trabalho)
+
+    def capa_chegou(self, url: str) -> None:
+        """Uma capa ficou pronta: redesenha só quem mostra aquela imagem."""
+        from oma_spotify.ui.capa import Capa
+        for w in self.screen.query(Capa):
+            if w.imagem == url:
+                w.refresh()
+        for c in self.screen.query(Cartao):
+            if c.item.img == url:
+                c.refresh()
+        for l in self.screen.query(Lista):
+            if getattr(l, "com_capas", False):
+                l.redesenhar()
+        p = self.player
+        if p is not None and (self.minha_fila or self.fila_spotify):
+            self._no_palco("pintar")
 
     def _no_palco(self, metodo: str) -> None:
         from textual.css.query import NoMatches
@@ -1838,6 +1859,11 @@ class Trabalhadores:
     def parar(self) -> None:
         for _ in self.threads:
             self.fila.put(None)
+
+
+def _sem_img(d: dict) -> dict:
+    """A URL da imagem fica só na memória, nunca no estado.json."""
+    return {k: v for k, v in d.items() if k != "img"}
 
 
 def _mesma(a: dict, b: dict) -> bool:

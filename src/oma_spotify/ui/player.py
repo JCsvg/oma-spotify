@@ -112,7 +112,7 @@ class Player(Horizontal):
             t.append(" · " if estreito else "  ", style=a.cor("mudo"))
             t.append(it.sub, style=a.cor("mudo"))
         q("#pl-titulo", Static).update(t)
-        q("#pl-capa", Capa).definir(it.uri, it.tipo, it.extra or it.nome)
+        q("#pl-capa", Capa).definir(it.uri, it.tipo, it.extra or it.nome, it.img)
         q("#t-dur", Static).update(mmss(it.dur_ms))
         q("#play", Botao).label = ic("pausar") if p.tocando else ic("tocar")
         al = q("#aleatorio", Botao)

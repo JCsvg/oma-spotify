@@ -1,9 +1,9 @@
 """Capa: o ponto único onde a interface desenha capas e fotos.
 
-Nesta versão não há imagem (decisão do JC): a capa é um bloco na cor do item, tirada
-das cores do tema, com a inicial no meio (em letra grande quando cabe). A foto de
-artista é redonda (os cantos ficam na cor do fundo). Para pôr imagem depois (Sixel,
-kitty ou meio-bloco), basta trocar `linhas_capa` e o `render` de `Capa`.
+Com imagem (0.5.0): `PROVEDOR` (o serviço `services/capas.py`) devolve a capa de verdade em meio-blocos.
+Sem imagem, com capas desligadas, sem ImageMagick, sem rede ou enquanto carrega: um bloco na cor do item,
+tirada das cores do tema, com a inicial no meio (em letra grande quando cabe). A foto de artista é redonda
+(os cantos ficam na cor do fundo).
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ from oma_spotify.tema import misturar
 from oma_spotify.ui.fonte import GLIFOS, _sem_acento
 
 CORES = ("red", "yellow", "green", "cyan", "blue", "magenta", "orange")
+PROVEDOR = None  # services.capas.Capas, posto pela app
 
 
 def cor_do_item(uri: str, tipo: str, paleta: dict) -> str:
@@ -43,9 +44,13 @@ def _elipse(w: int, h: int, y: int) -> tuple[int, int]:
 
 
 def linhas_capa(uri: str, tipo: str, nome: str, w: int, h: int, paleta: dict, redonda: bool | None = None,
-                glifo: str = "") -> list[Text]:
-    """h linhas de w colunas. Fundo na cor do item a 22 %, letra na cor cheia."""
+                glifo: str = "", imagem: str = "") -> list[Text]:
+    """h linhas de w colunas: a imagem, se já estiver pronta; senão o bloco na cor do item com a inicial."""
     w, h = max(1, w), max(1, h)
+    if imagem and PROVEDOR is not None:
+        r = PROVEDOR.obter(imagem, w, h, tipo == "artist" if redonda is None else redonda, paleta["background"])
+        if r is not None:
+            return [t.copy() for t in r]
     cor = cor_do_item(uri, tipo, paleta)
     bg = paleta["background"]
     fundo = misturar(cor, bg, 0.22)
@@ -84,13 +89,13 @@ class Capa(Widget):
 
     DEFAULT_CSS = "Capa { width: 14; height: 7; }"
 
-    def __init__(self, uri: str = "", tipo: str = "", nome: str = "", redonda: bool | None = None, **kw) -> None:
+    def __init__(self, uri: str = "", tipo: str = "", nome: str = "", redonda: bool | None = None, imagem: str = "", **kw) -> None:
         super().__init__(**kw)
-        self.uri, self.tipo, self.nome, self.redonda = uri, tipo, nome, redonda
+        self.uri, self.tipo, self.nome, self.redonda, self.imagem = uri, tipo, nome, redonda, imagem
 
-    def definir(self, uri: str, tipo: str, nome: str) -> None:
-        if (uri, tipo, nome) != (self.uri, self.tipo, self.nome):
-            self.uri, self.tipo, self.nome = uri, tipo, nome
+    def definir(self, uri: str, tipo: str, nome: str, imagem: str = "") -> None:
+        if (uri, tipo, nome, imagem) != (self.uri, self.tipo, self.nome, self.imagem):
+            self.uri, self.tipo, self.nome, self.imagem = uri, tipo, nome, imagem
             self.refresh()
 
     def render(self):
@@ -98,4 +103,5 @@ class Capa(Widget):
         if not self.uri and not self.nome:
             return Text("\n".join(t.plain for t in linhas_capa("", "", "", w, h, self.app.paleta, glifo="♪")),
                         style=f"{self.app.cor('mudo')} on {self.app.cor('painel')}", justify="left")
-        return Text("\n").join(linhas_capa(self.uri, self.tipo, self.nome, w, h, self.app.paleta, self.redonda))
+        return Text("\n").join(linhas_capa(self.uri, self.tipo, self.nome, w, h, self.app.paleta, self.redonda,
+                                            imagem=self.imagem))

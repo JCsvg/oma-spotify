@@ -29,6 +29,7 @@ class Config:
         self.fixados: list[str] = []  # URIs, na ordem dos números 1 a 9
         self.icones = "nerd"  # nerd ou simples
         self.letra = True  # buscar a letra na LRCLIB
+        self.capas = True  # mostrar capas e fotos de verdade
         self.carregar()
 
     @property
@@ -55,12 +56,13 @@ class Config:
             self.fixados = [u for u in fx if isinstance(u, str) and u.startswith("spotify:")][:MAX_FIXADOS]
         self.icones = "simples" if d.get("icones") == "simples" else "nerd"
         self.letra = bool(d.get("letra", True))
+        self.capas = bool(d.get("capas", True))
 
     def salvar(self) -> None:
         self.pasta.mkdir(parents=True, exist_ok=True)
         self.arquivo.write_text(json.dumps({"client_id": self.client_id, "porta": self.porta, "abertura": self.abertura,
                                             "tocar_por": self.tocar_por, "fixados": self.fixados, "icones": self.icones,
-                                            "letra": self.letra}, indent=1))
+                                            "letra": self.letra, "capas": self.capas}, indent=1))
 
     @property
     def redirect(self) -> str:

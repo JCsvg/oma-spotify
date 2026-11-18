@@ -306,6 +306,7 @@ class PaginaConfig(Pagina):
                 yield Botao("porta do callback", id="porta", classes="vazado")
                 yield Botao("tocar por", id="tocar-por", classes="vazado")
                 yield Botao("letra", id="letra", classes="vazado")
+                yield Botao("mostrar capas", id="capas", classes="vazado")
                 yield Botao("ícones", id="icones", classes="vazado")
                 yield Botao("mostrar a abertura", id="abertura", classes="vazado")
                 yield Botao("verificar configuração", id="verificar", classes="vazado")
@@ -324,6 +325,7 @@ class PaginaConfig(Pagina):
                   f"Porta do callback: {c.porta}", f"Mostrar a abertura: {'sim' if c.abertura else 'não'}",
                   f"Tocar por: {TOCAR_POR[c.tocar_por]}", f"Letra (lrclib.net): {'buscar' if c.letra else 'desligada'}",
                   f"Ícones: {'Nerd Font' if c.icones == 'nerd' else 'simples'}",
+                  f"Capas: {'sim' if c.capas else 'não'}" + ("" if a.capas.disponivel or not c.capas or a.demo else " (falta o ImageMagick: aparece a inicial)"),
                   f"Conta: {'conectada' + (' (demonstração)' if a.demo else '') if conectado else 'não conectada'}"]
         self.query_one("#resumo", Static).update(Text("\n".join(linhas)))
         q = self.query_one
@@ -331,6 +333,7 @@ class PaginaConfig(Pagina):
         q("#abertura", Botao).label = f"mostrar a abertura: {'sim' if c.abertura else 'não'}"
         q("#letra", Botao).label = f"letra pela lrclib.net: {'sim' if c.letra else 'não'}"
         q("#icones", Botao).label = f"ícones: {'Nerd Font' if c.icones == 'nerd' else 'simples'}"
+        q("#capas", Botao).label = f"mostrar capas: {'sim' if c.capas else 'não'}"
 
     def focar_entrada(self) -> None:
         self.query_one("#cid", Botao).focus()
@@ -367,6 +370,14 @@ class PaginaConfig(Pagina):
             c.letra = not c.letra
             c.salvar()
             a.letra, a._letra_uri = None, ""
+            self.recarregar()
+        elif b == "capas":
+            c.capas = not c.capas
+            c.salvar()
+            a.capas.desligar(c.capas)
+            a.refresh(repaint=True, layout=False)
+            for w in a.screen.query("Capa, Cartao"):
+                w.refresh()
             self.recarregar()
         elif b == "icones":
             c.icones = "simples" if c.icones == "nerd" else "nerd"
