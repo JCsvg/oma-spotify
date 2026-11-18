@@ -87,6 +87,8 @@ class OmaSpotifyApp(App[None]):
     Input.-textual-compact { border: none; padding: 0 1; }
     #resumo, #diag-config { height: auto; margin: 1 0; }
     #acoes-config Button { margin-bottom: 1; }
+    #acoes-config { height: auto; padding: 0 1; }
+    #resumo, #diag-config { padding: 0 1; }
     #titulo-setup { text-style: bold; color: $accent; margin: 0 1 1 1; }
     #setup { padding: 1 2; }
     #passos, #espera { height: auto; }

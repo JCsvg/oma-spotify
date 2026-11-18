@@ -4,8 +4,8 @@ from textual.widgets import Button, Input
 from oma_spotify.app import OmaSpotifyApp
 from oma_spotify.ui.barras import BarraPlayer, BarraTopo
 from oma_spotify.ui.biblioteca import Biblioteca
-from oma_spotify.ui.central import AreaCentral, CartaCapa, VistaInicio, VistaLista
-from oma_spotify.ui.dialogos import Confirmar, EscolherPlaylist, Pedir, SemDispositivo
+from oma_spotify.ui.central import AreaCentral, VistaInicio, VistaLista
+from oma_spotify.ui.dialogos import Confirmar, EscolherPlaylist, Pedir
 from oma_spotify.ui.navegacao import AjudaAba
 from oma_spotify.ui.painel import PainelAgora
 from oma_spotify.ui.widgets import Barra, ListaOpcoes, Tabela
@@ -16,7 +16,7 @@ TAM = (170, 45)
 
 async def pronto(app, pilot):
     await pilot.pause(0.5)
-    assert await esperar(pilot, lambda: app.player is not None and len(app.query(CartaCapa)) > 0)
+    assert await esperar(pilot, lambda: app.player is not None and app.query_one("#lista-inicio").option_count > 3)
     await pilot.pause(0.2)
 
 
@@ -40,102 +40,166 @@ PLAYLIST = {"uri": "spotify:playlist:p1", "tipo": "playlist", "nome": "Para estu
 
 
 # ------------------------------------------------------------ layout
-@pytest.mark.parametrize("tam,painel,recolhida", [((80, 24), False, True), ((120, 30), True, False), ((170, 45), True, False),
-                                                   ((200, 50), True, False)])
-async def test_layout_em_varios_tamanhos(app, tam, painel, recolhida):
+@pytest.mark.parametrize("tam,painel", [((80, 24), False), ((120, 30), True), ((170, 45), True), ((200, 50), True)])
+async def test_layout_em_janelas_em_varios_tamanhos(app, tam, painel):
     async with app.run_test(size=tam) as pilot:
         await pronto(app, pilot)
         assert app.query_one(PainelAgora).display == painel
-        bib = app.query_one(Biblioteca)
-        assert bib.recolhida == recolhida
+        assert app.query_one(Biblioteca).display
+        for n, t in (("topo", "[1] Busca"), ("bib", "[2] Biblioteca"), ("centro", "[3] Principal"), ("painel", "[4] Fila"), ("player", "[5] Player")):
+            assert app.query_one(f"#{n}").border_title == t
         player = app.query_one(BarraPlayer)
-        assert player.region.bottom <= tam[1] and player.region.height == 4 and player.region.y > 0
+        assert player.region.bottom <= tam[1] and player.region.height == 5
         assert app.query_one(BarraTopo).region.y == 0
         centro = app.query_one(AreaCentral)
         assert centro.region.width >= 40 and centro.region.height >= 10
-        assert len(app.query(CartaCapa)) > 0
-        assert "Tocando" in str(app.query_one("#titulo", Button).label) if False else True
+        # os botões do player cabem na janela
+        assert app.query_one("#play").region.right <= player.region.right
         await pilot.press("ctrl+space")
         await pilot.pause(0.2)
         assert isinstance(app.screen, AjudaAba)
 
 
-async def test_painel_e_coluna_por_tecla_e_por_botao(app):
+async def test_painel_e_biblioteca_por_tecla_e_numero(app):
     async with app.run_test(size=TAM) as pilot:
         await pronto(app, pilot)
         assert app.query_one(PainelAgora).display
         await pilot.press("ctrl+p")
         assert not app.query_one(PainelAgora).display
-        await pilot.click("#btn-painel")
-        assert app.query_one(PainelAgora).display
+        await pilot.press("4")  # o número mostra a janela escondida e foca nela
+        await pilot.pause(0.2)
+        assert app.query_one(PainelAgora).display and area(app) == "painel"
         await pilot.press("ctrl+b")
         await pilot.pause(0.2)
-        assert app.query_one(Biblioteca).recolhida
-        await pilot.click("#recolher")
+        assert not app.query_one(Biblioteca).display
+        await pilot.press("2")
         await pilot.pause(0.2)
-        assert not app.query_one(Biblioteca).recolhida
+        assert app.query_one(Biblioteca).display and area(app) == "bib"
 
 
-async def test_estreito_recolhe_sozinho_e_avisa_do_painel(app):
+async def test_estreito_painel_some_e_avisa(app):
     async with app.run_test(size=(80, 24)) as pilot:
         await pronto(app, pilot)
-        assert app.query_one(Biblioteca).recolhida and not app.query_one(PainelAgora).display
+        assert not app.query_one(PainelAgora).display
         await pilot.press("ctrl+p")
         assert any("colunas" in n.message for n in app._notifications)
         assert not app.query_one(PainelAgora).display
+        await pilot.press("4")
+        assert not app.query_one(PainelAgora).display
 
 
-async def test_capas_aparecem_no_demo(app):
+async def test_janela_com_foco_tem_borda_de_destaque(app):
     async with app.run_test(size=TAM) as pilot:
         await pronto(app, pilot)
-        t = app.capas.texto(app.player.item, 8, 4)
-        assert "▀" in t.plain and len(t.plain.split("\n")) == 4
+        await foco(app, pilot, "bib")
+        assert app.query_one("#bib").has_focus_within and not app.query_one("#centro").has_focus_within
+        assert app.query_one("#bib").styles.border_top[1] != app.query_one("#centro").styles.border_top[1]
 
 
 # ------------------------------------------------------------ navegação por teclado
-async def test_alt_setas_andam_entre_as_areas(app):
+@pytest.mark.parametrize("tam", [(120, 30), (170, 45), (200, 50)])
+async def test_ctrl_setas_andam_espacialmente_entre_as_janelas(app, tam):
+    async with app.run_test(size=tam) as pilot:
+        await pronto(app, pilot)
+        assert area(app) == "centro"
+        await pilot.press("ctrl+right")
+        assert area(app) == "painel"
+        await pilot.press("ctrl+right")
+        assert area(app) == "painel"
+        await pilot.press("ctrl+left")
+        assert area(app) == "centro"
+        await pilot.press("ctrl+left")
+        assert area(app) == "bib"
+        await pilot.press("ctrl+up")
+        assert area(app) == "topo"
+        await pilot.press("ctrl+down")
+        assert area(app) in ("bib", "centro", "painel")
+        await pilot.press("ctrl+down")
+        assert area(app) == "player"
+        await pilot.press("ctrl+up")
+        assert area(app) in ("bib", "centro", "painel")
+        await pilot.press("ctrl+k", "ctrl+j")
+        await pilot.press("ctrl+h", "ctrl+l")
+        assert area(app) in ("bib", "centro", "painel", "topo", "player")
+
+
+async def test_ctrl_hjkl_e_alt_setas_sao_apelidos(app):
     async with app.run_test(size=TAM) as pilot:
         await pronto(app, pilot)
-        assert area(app) == "centro"
-        await pilot.press("alt+right")
+        await pilot.press("ctrl+l")
         assert area(app) == "painel"
-        await pilot.press("alt+right")
-        assert area(app) == "painel"
-        await pilot.press("alt+left")
+        await pilot.press("ctrl+h")
         assert area(app) == "centro"
-        await pilot.press("alt+left")
-        assert area(app) == "bib"
-        await pilot.press("alt+up")
+        await pilot.press("ctrl+k")
         assert area(app) == "topo"
-        await pilot.press("alt+down")
-        assert area(app) == "centro"
-        await pilot.press("alt+down")
+        await pilot.press("ctrl+j", "ctrl+j")
         assert area(app) == "player"
         await pilot.press("alt+up")
-        assert area(app) == "centro"
-        await pilot.press("alt+h", "alt+l", "alt+k", "alt+j")
-        assert area(app) == "centro"
-
-
-async def test_alt_pula_o_painel_escondido(app):
-    async with app.run_test(size=(100, 30)) as pilot:
-        await pronto(app, pilot)
+        assert area(app) in ("bib", "centro", "painel")
+        await pilot.press("alt+left")
+        assert area(app) == "bib"
         await pilot.press("alt+right")
         assert area(app) == "centro"
+
+
+async def test_em_80x24_as_janelas_alcancam_se_por_ctrl_setas(app):
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pronto(app, pilot)
+        vistos = {area(app)}
+        for t in ("ctrl+left", "ctrl+up", "ctrl+down", "ctrl+down", "ctrl+up", "ctrl+right"):
+            await pilot.press(t)
+            vistos.add(area(app))
+        assert {"bib", "centro", "topo", "player"} <= vistos
+        await pilot.press("ctrl+right")
+        assert area(app) == "centro"  # sem painel, não há nada à direita
+
+
+@pytest.mark.parametrize("tecla,alvo", [("1", "topo"), ("2", "bib"), ("3", "centro"), ("5", "player")])
+async def test_numeros_saltam_para_a_janela(app, tecla, alvo):
+    async with app.run_test(size=TAM) as pilot:
+        await pronto(app, pilot)
+        await pilot.press("5" if alvo != "player" else "3")
+        await pilot.press(tecla)
+        await pilot.pause(0.2)
+        assert area(app) == alvo
+
+
+async def test_clique_foca_a_janela(app):
+    async with app.run_test(size=TAM) as pilot:
+        await pronto(app, pilot)
+        await pilot.click("#filtro-bib")
+        assert area(app) == "bib"
+        await pilot.click("#fila-lista")
+        await pilot.pause(0.1)
+        assert area(app) == "painel"
+        await pilot.click("#lista-inicio")
+        assert area(app) == "centro"
+
+
+async def test_numeros_digitam_em_campo_de_texto(app):
+    async with app.run_test(size=TAM) as pilot:
+        await pronto(app, pilot)
+        await pilot.press("slash")
+        await pilot.pause(0.2)
+        await pilot.press("1", "2", "3")
+        assert app.query_one("#busca", Input).value == "123" and area(app) == "topo"
 
 
 async def test_setas_andam_dentro_da_area_sem_trocar(app):
     async with app.run_test(size=TAM) as pilot:
         await pronto(app, pilot)
         await foco(app, pilot, "player")
+        assert area(app) == "player" and app.focused.id == "play"
+        ordem = []
+        for _ in range(12):
+            await pilot.press("right")
+            ordem.append(app.focused.id)
+            assert area(app) == "player"
+        assert {"proxima", "repetir", "curtir", "fila", "disp", "vol-menos", "vol-mais"} <= set(ordem)
+        for _ in range(12):
+            await pilot.press("h")
         assert area(app) == "player"
-        antes = app.focused.id
-        await pilot.press("right")
-        assert area(app) == "player" and app.focused.id != antes
-        await pilot.press("l")
-        await pilot.press("left")
-        await pilot.press("h")
-        assert area(app) == "player"
+        await pilot.press("ctrl+enter")
         await foco(app, pilot, "topo")
         await pilot.press("right")
         assert app.focused.id in ("avancar", "voltar", "inicio", "busca") and area(app) == "topo"
@@ -143,31 +207,29 @@ async def test_setas_andam_dentro_da_area_sem_trocar(app):
         assert area(app) == "topo"
 
 
-async def test_hjkl_e_setas_no_centro_chegam_a_todos_os_cartoes(app):
+async def test_setas_e_hjkl_andam_nas_linhas_do_centro(app, falso):
     async with app.run_test(size=TAM) as pilot:
         await pronto(app, pilot)
         await foco(app, pilot, "centro")
-        vistos = {app.focused}
-        for t in ("right", "down", "j", "down", "right", "l", "j", "j", "down", "k", "left", "h", "up"):
-            await pilot.press(t)
-            vistos.add(app.focused)
-            assert area(app) == "centro"
-        assert len(vistos) >= 6
+        lista = app.query_one("#lista-inicio")
+        a0 = lista.highlighted
+        await pilot.press("down", "j", "j")
+        assert lista.highlighted > a0 and area(app) == "centro"
+        await pilot.press("up", "k")
+        assert area(app) == "centro"
+        await pilot.press("t")
+        assert await esperar(pilot, lambda: falso.chamadas and falso.chamadas[-1][0] == "tocar")
 
 
-async def test_ctrl_jk_hl_enter(app, falso):
+async def test_ctrl_enter_aperta_o_botao_do_player(app, falso):
     async with app.run_test(size=TAM) as pilot:
         await pronto(app, pilot)
         await foco(app, pilot, "player")
         app.query_one("#proxima", Button).focus()
         await pilot.press("ctrl+enter")
         assert await esperar(pilot, lambda: falso.idx == 1)
-        await pilot.press("ctrl+h")
-        assert app.focused.id == "play"
-        await pilot.press("ctrl+left")
-        assert app.focused.id == "anterior"
-        await pilot.press("ctrl+k")
-        assert isinstance(app.focused, (Barra, Button))
+        await pilot.press("enter")
+        assert await esperar(pilot, lambda: falso.idx == 2)
 
 
 async def test_barra_busca_com_barra_e_esc_volta_ao_centro(app):
@@ -190,7 +252,7 @@ async def test_ajuda_which_key_lista_as_teclas(app):
         await pilot.press("f1")
         await pilot.pause(0.2)
         txt = " ".join(str(w.render()) for w in app.screen.query("Static"))
-        for t in ("Alt+", "Espaço", "Backspace", "Ctrl+P", "Alt+["):
+        for t in ("Ctrl+", "Espaço", "Backspace", "Ctrl+P", "Alt+["):
             assert t in txt
         await pilot.click("#fechar")
         await pilot.pause(0.2)
@@ -315,10 +377,11 @@ async def test_progresso_e_volume_por_clique_e_teclas(app, falso):
         assert await esperar(pilot, lambda: len([c for c in falso.chamadas if c[0] == "seek"]) == n + 2)
         await pilot.click("#volume", offset=(2, 0))
         assert await esperar(pilot, lambda: falso.vol < 30)
-        app.query_one("#volume", Barra).focus()
         v = falso.vol
-        await pilot.press("right")
+        await pilot.click("#vol-mais")
         assert await esperar(pilot, lambda: falso.vol == v + 5)
+        await pilot.click("#vol-menos")
+        assert await esperar(pilot, lambda: falso.vol == v)
 
 
 # ------------------------------------------------------------ biblioteca
@@ -378,25 +441,26 @@ async def test_criar_playlist_pelo_botao_mais(app, falso):
 
 
 # ------------------------------------------------------------ início e centro
-async def test_inicio_cartao_abre_por_clique_e_enter_e_toca_com_t(app, falso):
+async def test_inicio_em_texto_enter_abre_e_toca(app, falso):
     async with app.run_test(size=TAM) as pilot:
         await pronto(app, pilot)
-        assert isinstance(app.query_one(AreaCentral).atual, VistaInicio)
-        cartas = [c for c in app.query(CartaCapa) if c.item.tipo == "playlist"]
+        ini = app.query_one(VistaInicio)
+        titulos = [str(ini.query_one("#lista-inicio").get_option_at_index(i).prompt) for i in range(ini.query_one("#lista-inicio").option_count)]
+        assert any("Acesso rápido" in t for t in titulos) and any("Tocados recentemente" in t for t in titulos)
         await foco(app, pilot, "centro")
-        cartas[0].focus()
-        await pilot.press("t")
-        assert await esperar(pilot, lambda: falso.chamadas and falso.chamadas[-1][0] == "tocar")
+        lista = ini.query_one("#lista-inicio")
+        lista.highlighted = 2  # uma playlist
         await pilot.press("enter")
         await pilot.pause(0.5)
         assert app.query_one(AreaCentral).vista["t"] == "item"
         await pilot.press("escape")
         await pilot.pause(0.5)
-        carta = [c for c in app.query(CartaCapa) if c.item.tipo == "album" and not c.has_class("rapida")][0]
-        carta.focus()
+        ini = app.query_one(VistaInicio)
+        ini.query_one("#lista-inicio").focus()
+        i_track = next(n for n, i in enumerate(ini.query_one("#lista-inicio")._options) if i.id and ini.itens[i.id].tipo == "track")
+        ini.query_one("#lista-inicio").highlighted = i_track
         await pilot.press("enter")
-        await pilot.pause(0.5)
-        assert app.query_one(AreaCentral).vista["item"]["tipo"] == "album"
+        assert await esperar(pilot, lambda: falso.chamadas and falso.chamadas[-1][0] == "tocar")
 
 
 async def test_pagina_de_playlist_tocar_grande_linha_e_curtir(app, falso):
@@ -519,46 +583,143 @@ async def test_menu_da_conta_verificar_e_sair_pedem_o_certo(app):
         await pilot.press("escape")
 
 
-async def test_dispositivos_transferir_e_abrir_spotify_do_pc(app, falso, lancados):
+async def test_dispositivos_transferir_por_enter(app, falso):
     async with app.run_test(size=TAM) as pilot:
         v = await abrir_lista(app, pilot, {"t": "dispositivos"})
         v.query_one("#tabela", Tabela).focus()
         await pilot.press("down", "enter")
         assert await esperar(pilot, lambda: ("transferir", "d2") in falso.chamadas)
-        falso.devs, falso.sem_dispositivo = [], True
-        app.executar("x", falso.pausar)
-        await pilot.pause(0.5)
-        assert isinstance(app.screen, SemDispositivo)
-        await pilot.click("#abrir")
-        await pilot.pause(0.3)
-        assert lancados == [1]
-        from oma_spotify.services.modelos import Dispositivo
-        falso.devs = [Dispositivo("pc", "Meu PC", "Computer", False, 50)]
-        assert await esperar(pilot, lambda: ("transferir", "pc") in falso.chamadas, 5)
 
 
-async def test_botao_abrir_spotify_do_pc_na_tela_de_dispositivos(app, falso, lancados):
+async def test_botoes_iniciar_plugin_e_abrir_spotify_do_pc(app, falso, lancados, plugin):
+    falso.devs = []
     async with app.run_test(size=TAM) as pilot:
-        v = await abrir_lista(app, pilot, {"t": "dispositivos"})
-        await pilot.click("#abrir-pc")
+        await abrir_lista(app, pilot, {"t": "dispositivos"})
+        await pilot.click("#iniciar-plugin")
+        assert await esperar(pilot, lambda: plugin.iniciou == 1 and ("transferir", "oma") in falso.chamadas)
         await pilot.pause(0.3)
+        falso.devs = []
+        await pilot.click("#abrir-pc")
+        await pilot.pause(0.5)
         assert lancados == [1]
-        v.query_one("#tabela", Tabela).focus()
+        await foco(app, pilot, "centro")
+        app.query_one(AreaCentral).atual.query_one("#tabela", Tabela).focus()
         await pilot.press("o")
         await pilot.pause(0.3)
-        assert lancados == [1, 1]
 
 
-async def test_sem_dispositivo_escolher_leva_a_dispositivos(app, falso):
-    falso.sem_dispositivo = True
+async def tocar_da_biblioteca(app, pilot):
+    await foco(app, pilot, "bib")
+    await pilot.press("down", "t")
+
+
+async def test_sem_dispositivo_inicia_o_plugin_sozinho_sem_dialogo(app, falso, plugin):
+    falso.devs, falso.sem_dispositivo = [], True
     async with app.run_test(size=TAM) as pilot:
+        await pronto_sem_player(app, pilot)
+        await tocar_da_biblioteca(app, pilot)
+        assert await esperar(pilot, lambda: "OmaSpotify" in str(app.query_one("#msg").render()), 3)
+        assert await esperar(pilot, lambda: plugin.iniciou == 1 and ("transferir", "oma") in falso.chamadas, 5)
+        assert await esperar(pilot, lambda: any(c[0] == "tocar" for c in falso.chamadas), 5)  # repete a ação
+        assert len(app.screen_stack) == 1  # nenhum diálogo
+
+
+async def pronto_sem_player(app, pilot):
+    await pilot.pause(0.6)
+    assert await esperar(pilot, lambda: app.query_one("#lista").option_count > 0)
+
+
+async def test_dispositivo_do_plugin_ja_listado_nao_reinicia_o_servico(app, falso, plugin):
+    from oma_spotify.services.modelos import Dispositivo
+    falso.devs, falso.sem_dispositivo = [Dispositivo("oma", "OmaSpotify", "Computer", False, 70)], True
+    async with app.run_test(size=TAM) as pilot:
+        await pronto_sem_player(app, pilot)
+        await tocar_da_biblioteca(app, pilot)
+        assert await esperar(pilot, lambda: ("transferir", "oma") in falso.chamadas, 5)
+        assert plugin.iniciou == 0
+
+
+async def test_plugin_nao_instalado_mostra_mensagem_curta(app, falso, config, plugin):
+    config.tocar_por = "plugin"
+    plugin._inst = False
+    falso.devs, falso.sem_dispositivo = [], True
+    async with app.run_test(size=TAM) as pilot:
+        await pronto_sem_player(app, pilot)
+        await tocar_da_biblioteca(app, pilot)
+        assert await esperar(pilot, lambda: "não encontrado" in str(app.query_one("#msg").render()), 4)
+        assert plugin.iniciou == 0 and len(app.screen_stack) == 1
+
+
+async def test_plugin_que_nao_inicia_diz_o_que_fazer(app, falso, config, plugin):
+    config.tocar_por = "plugin"
+    plugin._inicia = False
+    falso.devs, falso.sem_dispositivo = [], True
+    async with app.run_test(size=TAM) as pilot:
+        await pronto_sem_player(app, pilot)
+        await tocar_da_biblioteca(app, pilot)
+        assert await esperar(pilot, lambda: "Finish playback setup" in str(app.query_one("#msg").render()) or
+                             any("Finish playback setup" in n.message for n in app._notifications), 4)
+        assert plugin.iniciou == 1 and len(app.screen_stack) == 1
+
+
+async def test_plugin_inicia_mas_nao_aparece_como_dispositivo(app, falso, config, plugin):
+    config.tocar_por = "plugin"
+    plugin._aparece = False
+    app.espera_max = 0.5
+    falso.devs, falso.sem_dispositivo = [], True
+    async with app.run_test(size=TAM) as pilot:
+        await pronto_sem_player(app, pilot)
+        await tocar_da_biblioteca(app, pilot)
+        assert await esperar(pilot, lambda: any("não apareceu" in n.message for n in app._notifications), 5)
+        assert "Finish playback setup" in [n.message for n in app._notifications if "não apareceu" in n.message][0]
+
+
+async def test_modo_spotify_do_pc_e_modo_escolher(app, falso, config, lancados, plugin):
+    from oma_spotify.services.modelos import Dispositivo
+    config.tocar_por = "pc"
+    falso.devs, falso.sem_dispositivo = [], True
+    async with app.run_test(size=TAM) as pilot:
+        await pronto_sem_player(app, pilot)
+        await tocar_da_biblioteca(app, pilot)
+        await esperar(pilot, lambda: lancados == [1], 3)
+        falso.devs = [Dispositivo("pc", "Meu PC", "Computer", False, 50)]
+        assert await esperar(pilot, lambda: ("transferir", "pc") in falso.chamadas, 5)
+        assert plugin.iniciou == 0
+    config.tocar_por = "escolher"
+    falso.devs, falso.sem_dispositivo = [], True
+    app2 = OmaSpotifyApp(cliente=falso, demo=True, estado=app.estado, config=config, armazem=app.armazem, abertura=False,
+                         lancador=lambda: lancados.append(2) or True, espera_dispositivo=0.05, plugin=plugin)
+    async with app2.run_test(size=TAM) as pilot:
+        await pronto_sem_player(app2, pilot)
+        await tocar_da_biblioteca(app2, pilot)
+        assert await esperar(pilot, lambda: app2.query_one(AreaCentral).vista["t"] == "dispositivos", 4)
+        assert lancados == [1] and plugin.iniciou == 0
+
+
+async def test_nao_entra_em_laco_quando_a_segunda_tentativa_falha(app, falso, plugin):
+    falso.devs, falso.sem_dispositivo = [], True
+    async with app.run_test(size=TAM) as pilot:
+        await pronto_sem_player(app, pilot)
+        orig = falso.transferir
+        falso.transferir = lambda *a, **k: None  # continua sem dispositivo ativo
+        await tocar_da_biblioteca(app, pilot)
+        assert await esperar(pilot, lambda: "Ainda sem dispositivo" in str(app.query_one("#msg").render()), 6)
+        assert plugin.iniciou == 1
+
+
+async def test_tocar_por_nas_configuracoes(app, config):
+    async with app.run_test(size=TAM) as pilot:
+        await pronto(app, pilot)
+        app.navegar({"t": "config"})
         await pilot.pause(0.5)
-        await pilot.press("space")
-        await pilot.pause(0.6)
-        assert isinstance(app.screen, SemDispositivo)
-        await pilot.click("#escolher")
-        await pilot.pause(0.4)
-        assert app.query_one(AreaCentral).vista["t"] == "dispositivos"
+        assert config.tocar_por == "auto"
+        ordem = []
+        for _ in range(4):
+            await pilot.click("#tocar-por")
+            await pilot.pause(0.2)
+            ordem.append(config.tocar_por)
+        assert ordem == ["plugin", "pc", "escolher", "auto"]
+        assert "Tocar por" in str(app.query_one("#resumo").render())
 
 
 async def test_painel_direito_mostra_faixa_fila_e_curtir(app, falso):

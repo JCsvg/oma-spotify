@@ -264,13 +264,13 @@ class PaginaConfig(Pagina):
         yield Static("", id="resumo")
         yield Static("", id="diag-config")
         with Vertical(id="acoes-config"):
-            yield Button("Client ID", id="cid")
-            yield Button("Porta do callback", id="porta")
-            yield Button("Tocar por", id="tocar-por")
-            yield Button("Mostrar a abertura", id="abertura")
-            yield Button("Verificar configuração", id="verificar")
-            yield Button("Entrar de novo (guia de configuração)", id="guia")
-            yield Button("Sair da conta", id="sair-conta", variant="error")
+            yield Button("Client ID", id="cid", compact=True)
+            yield Button("Porta do callback", id="porta", compact=True)
+            yield Button("Tocar por", id="tocar-por", compact=True)
+            yield Button("Mostrar a abertura", id="abertura", compact=True)
+            yield Button("Verificar configuração", id="verificar", compact=True)
+            yield Button("Entrar de novo (guia de configuração)", id="guia", compact=True)
+            yield Button("Sair da conta", id="sair-conta", variant="error", compact=True)
 
     def on_mount(self) -> None:
         self.recarregar()
