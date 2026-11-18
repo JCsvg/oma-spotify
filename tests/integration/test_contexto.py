@@ -9,7 +9,8 @@ from oma_spotify.services.falso import ClienteFalso
 from oma_spotify.ui.abertura import Abertura, banner
 from oma_spotify.ui.dialogos import Confirmar, Pedir
 from oma_spotify.ui.setup import TelaSetup
-from oma_spotify.ui.telas import PaginaBiblioteca, PaginaBusca
+from oma_spotify.ui.biblioteca import Biblioteca
+from oma_spotify.ui.central import AreaCentral, VistaLista
 from oma_spotify.ui.widgets import Tabela
 from tests.conftest import esperar
 
@@ -74,24 +75,24 @@ async def test_banner_em_varios_tamanhos(estado, config, armazem, tam, grande):
 async def test_contexto_restaurado_ao_reabrir(estado, config, armazem):
     a = novo(estado, config, armazem)
     async with a.run_test(size=TAM) as pilot:
-        await pilot.press("3")
-        pg = a.query_one(PaginaBiblioteca)
-        assert await esperar(pilot, lambda: pg.query_one("#tabela", Tabela).row_count == 2)
-        await pilot.press("down")
-        await pilot.click("#cat-albuns")
-        await pilot.pause(0.5)
-        await pilot.press("4")
+        await pilot.pause(0.8)
+        await pilot.click("#b-album")
+        a.query_one("#filtro-bib", Input).value = "noites"
+        a.navegar({"t": "busca", "q": "lua", "cat": "track"})
+        a.query_one("#busca", Input).value = "lua"
+        await pilot.pause(0.6)
+        await pilot.press("ctrl+p")
+        await pilot.press("ctrl+b")
         await pilot.pause(0.3)
-        a.query_one("#q", Input).value = "lua"
-        await pilot.pause(0.2)
         await a.action_quit()
     assert estado.arquivo.exists()
     b = novo(Estado(estado.pasta), config, armazem)
     async with b.run_test(size=TAM) as pilot:
-        await pilot.pause(0.8)
-        assert b.aba_atual() == "busca"
-        assert b.query_one("#q", Input).value == "lua"
-        assert b.query_one(PaginaBiblioteca).categoria == "albuns"
+        await pilot.pause(1.0)
+        assert b.query_one(AreaCentral).vista["t"] == "busca" and b.query_one(AreaCentral).vista["q"] == "lua"
+        assert b.query_one("#busca", Input).value == "lua"
+        assert b.query_one(Biblioteca).chip == "album" and b.query_one("#filtro-bib", Input).value == "noites"
+        assert b.painel_pref is False and b.coluna_pref is True
 
 
 async def test_estado_so_guarda_contexto_nunca_segredos(estado, config, armazem):
@@ -99,18 +100,15 @@ async def test_estado_so_guarda_contexto_nunca_segredos(estado, config, armazem)
     armazem.gravar({"access_token": "TOKEN-ABC", "refresh_token": "REFRESH-XYZ", "expira": 1})
     a = novo(estado, config, armazem)
     async with a.run_test(size=TAM) as pilot:
-        await pilot.press("4")
-        a.query_one("#q", Input).value = "busca qualquer"
-        await pilot.pause(0.3)
-        await pilot.press("5", "9")
+        await pilot.pause(0.6)
+        a.query_one("#busca", Input).value = "busca qualquer"
+        a.navegar({"t": "busca", "q": "busca qualquer", "cat": "tudo"})
         await pilot.pause(0.5)
-        await pilot.press("alt+h")
-        await pilot.pause(0.2)
         a.estado.salvar()
     bruto = estado.arquivo.read_text()
     for segredo in ("TOKEN-ABC", "REFRESH-XYZ", "CLIENTE-ID-SECRETO", "token", "client"):
         assert segredo not in bruto
-    assert json.loads(bruto)["dados"]["aba"] in ("biblioteca", "busca")
+    assert json.loads(bruto)["dados"]["busca"] == "busca qualquer"
     assert not (estado.pasta / "tokens.json").exists()
 
 
@@ -185,8 +183,8 @@ async def test_setup_esc_e_ctrl_setas(estado, config, armazem):
 async def test_config_opcoes_por_clique_e_teclado(estado, config, armazem):
     a = novo(estado, config, armazem)
     async with a.run_test(size=TAM) as pilot:
-        await pilot.press("9")
-        await pilot.pause(0.3)
+        a.navegar({"t": "config"})
+        await pilot.pause(0.5)
         await pilot.click("#abertura")
         assert config.abertura is False
         assert "não" in str(a.query_one("#abertura", Button).label)
@@ -212,8 +210,8 @@ async def test_sair_da_conta_apaga_tokens_com_confirmacao(estado, config, armaze
     a.demo = False
     async with a.run_test(size=TAM) as pilot:
         await pilot.pause(0.5)
-        await pilot.press("9")
-        await pilot.pause(0.3)
+        a.navegar({"t": "config"})
+        await pilot.pause(0.5)
         await pilot.click("#sair-conta")
         await pilot.pause(0.2)
         assert isinstance(a.screen, Confirmar)
@@ -358,8 +356,8 @@ async def test_verificar_configuracao_no_setup_e_na_config(estado, config, armaz
         b = OmaSpotifyApp(cliente=ClienteFalso(), demo=True, estado=estado, config=config, armazem=armazem, abertura=False,
                           url_rede=f"http://127.0.0.1:{srv.porta}/")
         async with b.run_test(size=TAM) as pilot:
-            await pilot.press("9")
-            await pilot.pause(0.3)
+            b.navegar({"t": "config"})
+            await pilot.pause(0.5)
             await pilot.click("#verificar")
             assert await esperar(pilot, lambda: "Conexão" in str(b.query_one("#diag-config").render()))
             assert id32 not in str(b.query_one("#diag-config").render())

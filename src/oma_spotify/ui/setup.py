@@ -17,7 +17,7 @@ from oma_spotify.services.auth import validar_client_id
 from oma_spotify.services.modelos import ErroSpotify
 from oma_spotify.ui.dialogos import Confirmar, Pedir
 from oma_spotify.ui.navegacao import NavegacaoMixin, RodapeEnxuto
-from oma_spotify.ui.telas import Pagina
+from oma_spotify.ui.base import Pagina
 
 PAINEL = "https://developer.spotify.com/dashboard"
 CRIAR = "https://developer.spotify.com/dashboard/create"

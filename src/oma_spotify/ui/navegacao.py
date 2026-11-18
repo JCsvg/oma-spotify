@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import ScrollableContainer, Vertical
+from textual.containers import ScrollableContainer, Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widget import Widget
 from textual.widgets import Button, DataTable, Footer, Input, Label, OptionList, Select, Static
@@ -20,22 +20,32 @@ from textual.widgets._footer import FooterKey
 NOMES = {"question_mark": "?", "slash": "/", "space": "Espaço", "escape": "Esc", "enter": "Enter",
          "left": "←", "right": "→", "up": "↑", "down": "↓"}
 
-COMUM = """[b]Navegação (igual em todas as telas)[/b]
-  Alt+← → / Alt+h l    tela anterior / próxima (ou clique na aba)
-  1 a 9                ir direto para a tela
-  ↑ ↓ / j k            linhas da lista
-  ← → / h l            entre botões e painéis da mesma tela
+COMUM = """[b]Áreas grandes (Alt)[/b]
+  Alt+← → / Alt+h l    biblioteca, centro e painel direito
+  Alt+↑ ↓ / Alt+k j    barra superior, centro e barra do player
+  Alt+[ / Alt+]        voltar / avançar no histórico (Esc ou Backspace também voltam)
+[b]Dentro da área[/b]
+  ↑ ↓ / j k            linhas
+  ← → / h l            botões e colunas da mesma fileira
   Enter                abrir ou tocar o item
-  Espaço               play/pausa (fora de campos de texto)
-  /                    buscar ou filtrar
   Ctrl+j / Ctrl+k      próxima / anterior seção
   Ctrl+h / Ctrl+l      entre os botões
   Ctrl+Enter           aperta o botão em foco
-  Esc                  volta para a lista
-  Clique               seleciona a linha; de novo, ação principal"""
+  /                    ir para a busca do topo
+[b]Player (sempre valem, fora de campo de texto)[/b]
+  Espaço               play/pausa
+  n  p                 próxima / anterior
+  s  r                 aleatório / repetir (desligado, lista, faixa)
+  + -                  volume
+  c                    curtir a faixa tocando (numa lista: o item selecionado)
+  ← → na barra         buscar 5 s, só com a barra de progresso em foco
+  f  d  i              fila, dispositivos, início
+  Ctrl+P  Ctrl+B       painel direito, recolher a biblioteca
+  Clique               seleciona; clique na barra busca ou muda o volume"""
 FINAL = """
 [b]Geral[/b]
-  q                    sair (o contexto da tela fica guardado)"""
+  Ctrl+Espaço ou F1    esta ajuda
+  q                    sair (o contexto fica guardado)"""
 
 
 def nome_tecla(tecla: str) -> str:
@@ -63,10 +73,11 @@ class AjudaAba(ModalScreen):
 
     DEFAULT_CSS = """
     AjudaAba { align: center middle; }
-    AjudaAba #caixa { width: 88; height: auto; max-height: 95%; background: $surface; border: round $accent; padding: 0 2; }
+    AjudaAba #caixa { width: 88; height: 90%; background: $surface; border: round $accent; padding: 0 2; }
     AjudaAba .titulo { text-style: bold; color: $accent; }
     AjudaAba .mudo { color: $text-muted; }
     AjudaAba #fechar { margin-top: 1; }
+    AjudaAba #texto-ajuda { height: 1fr; }
     """
     BINDINGS = [Binding("escape,q,ctrl+@,ctrl+space,ctrl+at,f1", "fechar", "Fechar", priority=True)]
 
@@ -77,7 +88,8 @@ class AjudaAba(ModalScreen):
     def compose(self) -> ComposeResult:
         with Vertical(id="caixa"):
             yield Label(f"Teclas: {self._titulo}", classes="titulo")
-            yield Static(self._texto)
+            with VerticalScroll(id="texto-ajuda"):
+                yield Static(self._texto)
             yield Button("Fechar", id="fechar")
 
     def on_button_pressed(self, ev: Button.Pressed) -> None:
@@ -166,10 +178,10 @@ class NavegacaoMixin:
     def acoes_do_rodape(self) -> list[str]:
         f = self._foco()
         if isinstance(f, Button):
-            return ["botao_acionar", "botao(1)", "aba_relativa(1)", "ajuda_aba"]
+            return ["botao_acionar", "botao(1)", "play_pause", "ajuda_aba"]
         if isinstance(f, (Input, Select)):
-            return ["aba_relativa(1)", "ajuda_aba"]
-        return list(self.RODAPE)[:3] + ["aba_relativa(1)", "ajuda_aba"]
+            return ["ajuda_aba"]
+        return list(self.RODAPE)[:3] + ["play_pause", "ajuda_aba"]
 
     def texto_ajuda(self) -> str:
         linhas = []

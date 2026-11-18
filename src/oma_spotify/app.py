@@ -13,7 +13,8 @@ from rich.text import Text
 from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import Button, Header, Input, Tabs, TabbedContent, TabPane
+from textual.containers import Horizontal
+from textual.widgets import Button, Input
 
 from oma_spotify import __version__, tema
 from oma_spotify.config import Config
@@ -24,17 +25,18 @@ from oma_spotify.services.diagnostico import HOST_SPOTIFY
 from oma_spotify.services.falso import ClienteFalso
 from oma_spotify.services.modelos import ErroSpotify, Item
 from oma_spotify.ui.abertura import Abertura
-from oma_spotify.ui.dialogos import EscolherPlaylist, SemDispositivo
-from oma_spotify.ui.navegacao import AjudaAba, RodapeEnxuto
-from oma_spotify.ui.setup import PaginaConfig, TelaSetup
-from oma_spotify.ui.telas import (CONTEXTOS, ListaItens, PaginaBiblioteca, PaginaBusca, PaginaDispositivos, PaginaFila,
-                                  PaginaPlaylists, PaginaRecentes, PaginaTocando, PaginaTop, TelaItens)
-from oma_spotify.ui.widgets import Tabela
+from oma_spotify.ui.barras import BarraPlayer, BarraTopo, MenuConta
+from oma_spotify.ui.biblioteca import CURTIDAS, Biblioteca
+from oma_spotify.ui.capa import Capas
+from oma_spotify.ui.central import CONTEXTOS, AreaCentral, VistaInicio, VistaLista, item_de_dict, serializar
+from oma_spotify.ui.dialogos import EscolherPlaylist, Pedir, SemDispositivo
+from oma_spotify.ui.navegacao import AjudaAba, RodapeEnxuto, eh_controle
+from oma_spotify.ui.painel import PainelAgora
+from oma_spotify.ui.setup import TelaSetup
+from oma_spotify.ui.widgets import Barra, Tabela
 
-ABAS = [("tocando", "Tocando", PaginaTocando), ("playlists", "Playlists", PaginaPlaylists),
-        ("biblioteca", "Biblioteca", PaginaBiblioteca), ("busca", "Busca", PaginaBusca), ("fila", "Fila", PaginaFila),
-        ("dispositivos", "Dispositivos", PaginaDispositivos), ("recentes", "Recentes", PaginaRecentes),
-        ("top", "Top", PaginaTop), ("config", "Config", PaginaConfig)]
+AREAS = ("topo", "bib", "centro", "painel", "player")
+LARGURA_PAINEL, LARGURA_BIB = 120, 100
 
 
 def abrir_spotify_do_pc() -> bool:
@@ -67,63 +69,69 @@ class OmaSpotifyApp(App[None]):
     ENABLE_COMMAND_PALETTE = False
     CSS = """
     Screen { background: $background; color: $foreground; }
-    TabbedContent { height: 1fr; }
-    TabPane { padding: 0 1; }
-    DataTable { height: 1fr; }
+    Button { min-width: 0; }
+    #corpo { height: 1fr; }
+    #bib, #painel { height: 1fr; }
+    #centro { height: 1fr; }
+    DataTable { height: 1fr; background: $surface; }
     DataTable > .datatable--cursor { background: $accent 28%; color: $foreground; text-style: bold; }
     DataTable:focus > .datatable--cursor { background: $accent 40%; color: $foreground; text-style: bold; }
-    #barra, #acoes, #cats { height: 3; }
-    #barra Input { width: 1fr; }
-    #barra Button, #acoes Button, #cats Button { margin-right: 1; }
-    #vazio { height: 1fr; content-align: center middle; text-align: center; color: $text-muted; }
-    #topo { height: 6; margin-bottom: 1; }
-    #capa { width: 14; height: 6; background: $accent 18%; content-align: center middle; margin-right: 2; }
-    #info { width: 1fr; }
-    #titulo { text-style: bold; }
-    #linha-prog, #linha-vol { height: 1; margin-bottom: 1; }
-    #t-pos, #t-dur { width: 6; }
-    #t-dur { text-align: right; }
-    #rot-vol { width: 9; }
-    #pct-vol { width: 6; text-align: right; }
-    #aviso { color: $warning; height: auto; }
-    #rot-fila { color: $accent; text-style: bold; margin-top: 1; }
-    #resumo { margin: 1 0; height: auto; }
+    OptionList { border: none; padding: 0; }
+    OptionList > .option-list--option-highlighted { background: $accent 28%; }
+    OptionList:focus > .option-list--option-highlighted { background: $accent 40%; text-style: bold; }
+    #resumo, #diag-config { height: auto; margin: 1 0; }
     #acoes-config Button { margin-bottom: 1; }
-    #titulo-setup, #titulo-detalhe { text-style: bold; color: $accent; margin: 0 1 1 1; }
+    #titulo-setup { text-style: bold; color: $accent; margin: 0 1 1 1; }
     #setup { padding: 1 2; }
     #passos, #espera { height: auto; }
     #setup .passo { margin-top: 1; }
     #setup .linha { height: 3; }
     #setup .linha Button { margin-right: 1; }
     #redirect { background: $surface; padding: 0 1; color: $accent; text-style: bold; }
-    #status, #motivo, #link, #diag, #diag-config, #contagem { height: auto; }
+    #status, #motivo, #link, #diag, #contagem { height: auto; }
     #contagem { text-style: bold; color: $accent; margin: 1 0; }
     #ajuda-texto { background: $surface; padding: 0 1; margin-top: 1; height: auto; }
     #status, #motivo { color: $warning; margin-top: 1; }
     """
     BINDINGS = [
         Binding("q", "quit", "Sair"),
-        *[Binding(str(n + 1), f"aba('{a[0]}')", a[1], show=False) for n, a in enumerate(ABAS)],
-        Binding("alt+l,alt+right", "aba_relativa(1)", "Próxima tela", key_display="Alt+L", priority=True),
-        Binding("alt+h,alt+left", "aba_relativa(-1)", "Tela anterior", key_display="Alt+H", priority=True),
-        Binding("left,h", "lateral(-1)", show=False),
-        Binding("right,l", "lateral(1)", show=False),
-        Binding("up,k", "linha(-1)", show=False),
-        Binding("down,j", "linha(1)", show=False),
+        Binding("alt+left,alt+h", "area(-1, 0)", "Área à esquerda", key_display="Alt+←", priority=True),
+        Binding("alt+right,alt+l", "area(1, 0)", "Área à direita", key_display="Alt+→", priority=True),
+        Binding("alt+up,alt+k", "area(0, -1)", "Área acima", key_display="Alt+↑", priority=True),
+        Binding("alt+down,alt+j", "area(0, 1)", "Área abaixo", key_display="Alt+↓", priority=True),
+        Binding("alt+left_square_bracket", "voltar_historico", "Voltar", key_display="Alt+[", priority=True),
+        Binding("alt+right_square_bracket", "avancar_historico", "Avançar", key_display="Alt+]", priority=True),
+        Binding("left,h", "mover(-1, 0)", show=False),
+        Binding("right,l", "mover(1, 0)", show=False),
+        Binding("up,k", "mover(0, -1)", show=False),
+        Binding("down,j", "mover(0, 1)", show=False),
+        Binding("escape,backspace", "voltar", "Voltar", show=False),
         Binding("space", "play_pause", "Play/Pausa", key_display="Espaço"),
+        Binding("n", "proxima", "Próxima"),
+        Binding("p", "anterior", "Anterior"),
+        Binding("s", "aleatorio", "Aleatório"),
+        Binding("r", "repetir", "Repetir"),
+        Binding("plus,equals_sign", "volume(5)", "Volume +", show=False),
+        Binding("minus", "volume(-5)", "Volume -", show=False),
+        Binding("c", "curtir_tocando", "Curtir"),
+        Binding("f", "ir('fila')", "Fila", show=False),
+        Binding("d", "ir('dispositivos')", "Dispositivos", show=False),
+        Binding("i", "ir('inicio')", "Início", show=False),
+        Binding("slash", "buscar", "Buscar", key_display="/"),
+        Binding("ctrl+p", "painel", "Painel", priority=True),
+        Binding("ctrl+b", "coluna", "Biblioteca", priority=True),
         Binding("ctrl+right,ctrl+l", "botao(1)", "Próximo botão", key_display="Ctrl+→", priority=True),
         Binding("ctrl+left,ctrl+h", "botao(-1)", "Botão anterior", key_display="Ctrl+←", priority=True),
         Binding("ctrl+down,ctrl+j", "secao(1)", "Próxima seção", key_display="Ctrl+↓", priority=True),
         Binding("ctrl+up,ctrl+k", "secao(-1)", "Seção anterior", key_display="Ctrl+↑", priority=True),
         Binding("ctrl+@,ctrl+space,ctrl+at,f1", "ajuda_aba", "Ajuda", key_display="Ctrl+Espaço", priority=True),
         Binding("ctrl+enter", "botao_acionar", "Apertar botão", key_display="Ctrl+Enter", priority=True),
-        Binding("escape", "voltar_foco", "Voltar à lista", show=False),
     ]
 
     def __init__(self, cliente=None, demo: bool = False, estado: Estado | None = None, config: Config | None = None,
                  armazem: Armazem | None = None, abertura: bool = True, abridor=None, lancador=None,
                  espera_dispositivo: float = 1.5, copiador=None, tempo_login: float = 180.0, tempo_ajuda: float = 15.0,
-                 url_rede: str | None = None) -> None:
+                 url_rede: str | None = None, capas: Capas | None = None) -> None:
         super().__init__()
         self.demo = demo
         self.estado = estado or Estado()
@@ -138,40 +146,57 @@ class OmaSpotifyApp(App[None]):
         self.copiador = copiador or copiar_para_area
         self.tempo_login, self.tempo_ajuda = tempo_login, tempo_ajuda
         self.url_rede = url_rede or HOST_SPOTIFY
+        self.capas = capas or Capas(demo, chamar=lambda f, *a: self.call_from_thread(f, *a))
         self.paleta = tema.ler()
-        self._aba_alvo, self._aba_alvo_em = "", 0.0
         self.pronto = False
         self.salvo: dict = {}
+        # navegação
+        self.historico: list[dict] = []
+        self.pos = -1
+        self.painel_pref = True
+        self.coluna_pref = False
+        self.ultimo: dict = {}
+        # reprodução
+        self.player = None
+        self.curtido = False
+        self.fila_atual: list = []
+        self._uri = ""
+        self._buscando = False
+        self._fila_em = 0.0
+        # dados
+        self.dados_bib: list[Item] = []
 
     # ------------------------------------------------------------ montagem
     def compose(self) -> ComposeResult:
-        yield Header(show_clock=False)
-        with TabbedContent(initial="tocando", id="abas"):
-            for n, (id_, rotulo, cls) in enumerate(ABAS):
-                with TabPane(f"{n + 1} {rotulo}", id=id_):
-                    yield cls()
+        yield BarraTopo(id="topo")
+        with Horizontal(id="corpo"):
+            yield Biblioteca(id="bib")
+            yield AreaCentral(id="centro")
+            yield PainelAgora(id="painel")
+        yield BarraPlayer(id="player")
         yield RodapeEnxuto()
 
     def on_mount(self) -> None:
         self.register_theme(tema.tema_textual("omarchy"))
         self.theme = "omarchy"
-        self.sub_title = "Spotify" + (" (demonstração)" if self.demo else "")
-        for t in self.query(Tabs):
-            t.can_focus = False  # as setas não trocam de aba, só Alt e os números
         self.estado.carregar()
         self.salvo = dict(self.estado.dados)
+        self.set_interval(0.25, self._tick)
+        self.set_interval(2.0, self._poll)
         self.call_after_refresh(self._iniciar)
 
     def _iniciar(self) -> None:
-        for id_, _, cls in ABAS:
-            try:
-                self.query_one(cls).restaurar(self.salvo.get(f"aba_{id_}", {}))
-            except Exception:
-                pass
+        s = self.salvo
+        self.painel_pref = bool(s.get("painel", True))
+        self.coluna_pref = bool(s.get("coluna", False))
+        try:
+            self.query_one(Biblioteca).restaurar(s.get("bib", {}))
+            if isinstance(s.get("busca"), str):
+                self.query_one("#busca", Input).value = s["busca"]
+        except Exception:
+            pass
+        self.ajustar()
         primeira = self.com_abertura and self.config.abertura and not self.estado.ja_abriu()
-        aba = self.salvo.get("aba", "tocando")
-        if aba in {a[0] for a in ABAS} and not primeira:
-            self.query_one("#abas", TabbedContent).active = aba
         self.pronto = True
         if primeira:
             self.estado.marcar_abertura()
@@ -186,13 +211,63 @@ class OmaSpotifyApp(App[None]):
             else:
                 self.pedir_login("")
                 return
-        self.recarregar_tudo()
-        self.call_after_refresh(self.focar_tabela)
+        self._entrar_no_app()
+
+    def _entrar_no_app(self) -> None:
+        self.carregar_biblioteca()
+        hist = [v for v in self.salvo.get("hist", []) if isinstance(v, dict) and "t" in v]
+        if hist and not self.historico:
+            self.historico = hist[-30:]
+            self.pos = min(int(self.salvo.get("pos", len(self.historico) - 1)), len(self.historico) - 1)
+            self._mostrar_vista(self.historico[self.pos], foco=False)
+        elif not self.historico:
+            self.navegar({"t": "inicio"}, foco=False)
+        self._poll(forcar=True)
+        self.set_timer(0.3, self._foco_inicial)
+
+    def _foco_inicial(self) -> None:
+        """O foco automático do Textual cai na barra superior; leva para o centro se ninguém mexeu."""
+        if len(self.screen_stack) == 1 and self.nome_area(self.focused) in ("", "topo") and not isinstance(self.focused, Input):
+            self.focar_area("centro")
 
     def cor(self, nome: str) -> str:
         p = self.paleta
         return {"success": p["green"], "warning": p["yellow"], "error": p["red"], "accent": p["accent"],
                 "muted": p.get("dark_foreground", p["muted"])}.get(nome, p["foreground"])
+
+    def miniatura_curtidas(self):
+        return self.query_one(Biblioteca).miniatura_curtidas()
+
+    # ------------------------------------------------------------ layout
+    def on_resize(self, ev=None) -> None:
+        if self.pronto:
+            self.ajustar()
+
+    def ajustar(self) -> None:
+        w, h = self.size
+        painel = self.query_one(PainelAgora)
+        bib = self.query_one(Biblioteca)
+        painel.display = self.painel_pref and w >= LARGURA_PAINEL
+        bib.alternar_recolhida(self.coluna_pref or w < LARGURA_BIB) if bib.recolhida != (self.coluna_pref or w < LARGURA_BIB) else None
+        bib.styles.width = 10 if bib.recolhida else (34 if w >= 150 else 30)
+        painel.styles.width = 38 if w >= 150 else 34
+        painel.ajustar(h)
+        self.query_one(BarraPlayer).ajustar(w)
+
+    def action_painel(self) -> None:
+        if self.size.width < LARGURA_PAINEL:
+            self.notify(f"O terminal precisa de ao menos {LARGURA_PAINEL} colunas para o painel Tocando agora.")
+            return
+        self.painel_pref = not self.painel_pref
+        self.guardar("painel", self.painel_pref)
+        self.ajustar()
+        if not self.painel_pref and self.nome_area(self.focused) == "painel":
+            self.focar_area("centro")
+
+    def action_coluna(self) -> None:
+        self.coluna_pref = not self.coluna_pref
+        self.guardar("coluna", self.coluna_pref)
+        self.ajustar()
 
     # ------------------------------------------------------------ conta
     def nova_sessao(self) -> Sessao:
@@ -210,8 +285,7 @@ class OmaSpotifyApp(App[None]):
             if ok:
                 self.conectar()
                 self.notify("Conectado ao Spotify.")
-                self.recarregar_tudo()
-                self.call_after_refresh(self.focar_tabela)
+                self._entrar_no_app()
         self.push_screen(TelaSetup(motivo), fim)
 
     def sair_da_conta(self) -> None:
@@ -220,13 +294,14 @@ class OmaSpotifyApp(App[None]):
             return
         self.armazem.apagar()
         self.cliente, self.conectado = None, False
+        self.player = None
         self.pedir_login("Você saiu da conta.")
 
     def copiar(self, texto: str) -> bool:
         """Copia para a área de transferência. True só se foi com wl-copy (senão a tela mostra o texto)."""
         ok = self.copiador(texto)
         try:
-            self.copy_to_clipboard(texto)  # OSC 52, vale em muitos terminais
+            self.copy_to_clipboard(texto)
         except Exception:
             pass
         return ok
@@ -238,36 +313,188 @@ class OmaSpotifyApp(App[None]):
             pass
         self.notify("Abrindo no navegador. Se não abriu, o endereço é " + url, timeout=6)
 
+    def abrir_menu_conta(self) -> None:
+        def fim(r):
+            if r in ("dispositivos", "fila", "recentes", "top", "config"):
+                self.navegar({"t": r})
+            elif r == "verificar":
+                self.navegar({"t": "config"})
+                self.call_after_refresh(lambda: self.set_timer(0.2, self._verificar_config))
+            elif r == "sair":
+                from oma_spotify.ui.dialogos import Confirmar
+                self.push_screen(Confirmar("Sair da conta?", ["Os tokens deste computador serão apagados.",
+                                                              "Para voltar, é preciso entrar de novo."], "Sair da conta"),
+                                 lambda ok: self.sair_da_conta() if ok else None)
+        self.push_screen(MenuConta(), fim)
+
+    def _verificar_config(self) -> None:
+        a = self.query_one(AreaCentral).atual
+        if a is not None and hasattr(a, "action_verificar"):
+            a.action_verificar()
+
     # ------------------------------------------------------------ estado
-    def guardar_aba(self, nome: str, d: dict) -> None:
+    def guardar(self, chave: str, valor) -> None:
         if self.pronto:
-            self.estado.definir(f"aba_{nome}", d)
+            self.estado.definir(chave, valor)
 
-    # ------------------------------------------------------------ navegação
-    def aba_atual(self) -> str:
-        return self.query_one("#abas", TabbedContent).active
+    def guardar_vista(self, view) -> None:
+        if not self.pronto or not self.historico or self.pos < 0:
+            return
+        try:
+            v = view.estado_()
+        except Exception:
+            return
+        self.historico[self.pos] = v
+        self.estado.definir("hist", self.historico[-30:])
+        self.estado.definir("pos", min(self.pos, 29) if len(self.historico) <= 30 else self.pos - (len(self.historico) - 30))
 
-    def aba_widget(self):
-        a = self.aba_atual()
-        for id_, _, cls in ABAS:
-            if id_ == a:
-                return self.query_one(cls)
-        return None
+    # ------------------------------------------------------------ navegação por histórico
+    def navegar(self, vista: dict, foco: bool = True) -> None:
+        if self.pos >= 0 and self.historico and _mesma(self.historico[self.pos], vista):
+            self._mostrar_vista(vista, foco)
+            return
+        self.historico = self.historico[: self.pos + 1] + [vista]
+        self.pos = len(self.historico) - 1
+        self._mostrar_vista(vista, foco)
+        self._salvar_hist()
+
+    def _salvar_hist(self) -> None:
+        self.guardar("hist", self.historico[-30:])
+        self.guardar("pos", self.pos - max(0, len(self.historico) - 30))
+
+    def _mostrar_vista(self, vista: dict, foco: bool = True) -> None:
+        self.query_one(AreaCentral).mostrar(vista, foco)
+        self._botoes_historico()
+
+    def _botoes_historico(self) -> None:
+        try:
+            self.query_one("#voltar", Button).disabled = self.pos <= 0
+            self.query_one("#avancar", Button).disabled = self.pos >= len(self.historico) - 1
+        except Exception:
+            pass
+
+    def action_voltar_historico(self) -> None:
+        if len(self.screen_stack) == 1 and self.pos > 0:
+            self.pos -= 1
+            self._mostrar_vista(self.historico[self.pos])
+            self._salvar_hist()
+
+    def action_avancar_historico(self) -> None:
+        if len(self.screen_stack) == 1 and self.pos < len(self.historico) - 1:
+            self.pos += 1
+            self._mostrar_vista(self.historico[self.pos])
+            self._salvar_hist()
+
+    def action_voltar(self) -> None:
+        if len(self.screen_stack) > 1:
+            return
+        if isinstance(self.focused, Input):
+            self.focar_area("centro")
+        else:
+            self.action_voltar_historico()
+
+    def action_ir(self, destino: str) -> None:
+        if len(self.screen_stack) == 1:
+            self.navegar({"t": destino})
+
+    def abrir_item(self, item: Item) -> None:
+        if item.tipo == "curtidas":
+            self.navegar({"t": "curtidas"})
+        else:
+            self.navegar({"t": "item", "item": serializar(item)})
+
+    def action_buscar(self) -> None:
+        if len(self.screen_stack) == 1:
+            self.call_after_refresh(self.query_one("#busca", Input).focus)
+
+    # ------------------------------------------------------------ áreas, foco e setas
+    def nome_area(self, w) -> str:
+        while w is not None:
+            if getattr(w, "id", None) in AREAS and w.parent is not None and w.parent.id in ("corpo", None, "_default"):
+                return w.id
+            w = w.parent
+        return ""
+
+    def _area_widget(self, nome: str):
+        return self.query_one(f"#{nome}")
+
+    def on_descendant_focus(self, ev) -> None:
+        n = self.nome_area(ev.widget)
+        if n:
+            self.ultimo[n] = ev.widget
+
+    def focar_area(self, nome: str) -> None:
+        w = self._area_widget(nome)
+        if not w.display:
+            return
+        ult = self.ultimo.get(nome)
+        if ult is not None and ult.is_attached and ult.focusable and ult.display:
+            ult.focus()
+        else:
+            w.focar_entrada()
+
+    def action_area(self, dx: int, dy: int) -> None:
+        if len(self.screen_stack) > 1:
+            return
+        atual = self.nome_area(self.focused) or "centro"
+        meio = [n for n in ("bib", "centro", "painel") if self._area_widget(n).display]
+        if dy < 0:
+            dest = "topo" if atual in meio or atual == "player" and False else ("centro" if atual == "player" else "topo")
+        elif dy > 0:
+            dest = "centro" if atual == "topo" else "player"
+        else:
+            if atual not in meio:
+                return
+            i = max(0, min(len(meio) - 1, meio.index(atual) + dx))
+            dest = meio[i]
+        self.focar_area(dest)
 
     def nav_da_aba(self):
         if len(self.screen_stack) > 1:
             s = self.screen
-            if isinstance(s, TelaItens):
-                return s.lista
             return s if hasattr(s, "mover_secao") else None
-        return self.aba_widget()
+        n = self.nome_area(self.focused) or "centro"
+        return self._area_widget(n)
 
     def check_action(self, action: str, parameters):
-        if action in ("aba_relativa", "play_pause") and len(self.screen_stack) > 1 and not isinstance(self.screen, TelaItens):
-            return False
         if action == "ajuda_aba":
             return self.nav_da_aba() is not None or isinstance(self.screen, AjudaAba)
+        if len(self.screen_stack) > 1 and not isinstance(self.screen, AjudaAba) and action in (
+                "area", "voltar_historico", "avancar_historico", "painel", "coluna", "ir", "buscar", "play_pause", "proxima",
+                "anterior", "aleatorio", "repetir", "volume", "curtir_tocando"):
+            return False
         return True
+
+    def action_mover(self, dx: int, dy: int) -> None:
+        """Setas e hjkl: andam pelos controles vizinhos da mesma área, por posição na tela."""
+        f = self.focused
+        raiz = self.screen if len(self.screen_stack) > 1 else None
+        if f is None:
+            if raiz is None:
+                self.focar_area("centro")
+            return
+        if raiz is None:
+            raiz = self._area_widget(self.nome_area(f) or "centro")
+        cands = [w for w in raiz.query("*") if w is not f and eh_controle(w) and w.display and w.region.area > 0]
+        fr = f.region
+        fcx, fcy = fr.x + fr.width / 2, fr.y + fr.height / 2
+        melhor, chave = None, None
+        for w in cands:
+            r = w.region
+            cx, cy = r.x + r.width / 2, r.y + r.height / 2
+            sobrepoe = fr.y < r.bottom and r.y < fr.bottom
+            if dx:
+                if not sobrepoe or (cx - fcx) * dx <= 0:
+                    continue
+                k = (abs(cx - fcx), 0)
+            else:
+                if sobrepoe or (cy - fcy) * dy <= 0:
+                    continue
+                k = (abs(cy - fcy), abs(cx - fcx))
+            if chave is None or k < chave:
+                melhor, chave = w, k
+        if melhor is not None:
+            melhor.focus()
 
     def action_secao(self, passo: int) -> None:
         nav = self.nav_da_aba()
@@ -282,32 +509,8 @@ class OmaSpotifyApp(App[None]):
         if nav is not None:
             self.push_screen(AjudaAba(nav.NOME.capitalize(), nav.texto_ajuda()))
 
-    def action_voltar_foco(self) -> None:
-        nav = self.nav_da_aba()
-        if nav is not None:
-            nav.focar_entrada()
-
-    def action_aba(self, aba: str) -> None:
-        if len(self.screen_stack) > 1 or aba not in {a[0] for a in ABAS}:
-            return
-        self._ir_para(aba)
-
-    def _ir_para(self, aba: str) -> None:
-        self._aba_alvo, self._aba_alvo_em = aba, time.monotonic()
-        self.query_one("#abas", TabbedContent).active = aba
-        self.call_after_refresh(self.focar_tabela)
-
-    def action_aba_relativa(self, passo: int) -> None:
-        if len(self.screen_stack) > 1:
-            return
-        ordem = [a[0] for a in ABAS]
-        base = self._aba_alvo or self.aba_atual()
-        self._ir_para(ordem[(ordem.index(base) + passo) % len(ordem)])
-
     def _botoes(self) -> list[Button]:
-        raiz = self.screen if len(self.screen_stack) > 1 else self.aba_widget()
-        if raiz is None:
-            return []
+        raiz = self.screen if len(self.screen_stack) > 1 else self._area_widget(self.nome_area(self.focused) or "centro")
         nav = self.nav_da_aba()
         fileira = nav.fileira() if nav is not None else []
         if fileira:
@@ -324,59 +527,14 @@ class OmaSpotifyApp(App[None]):
         else:
             botoes[0 if passo > 0 else -1].focus()
 
-    def action_lateral(self, passo: int) -> None:
-        """←/→ e h/l: andam entre botões e painéis da tela (nunca trocam de aba)."""
-        if isinstance(self.focused, Input):
-            return
-        if isinstance(self.focused, Button):
-            self.action_botao(passo)
-            return
-        botoes = self._botoes()
-        if botoes:
-            botoes[0 if passo > 0 else -1].focus()
-
-    def action_linha(self, passo: int) -> None:
-        f = self.focused
-        if isinstance(f, Button) and passo < 0:
-            nav = self.nav_da_aba()
-            if nav is not None:
-                for z in nav.zonas():
-                    if f in z and isinstance(z[0], Tabela):
-                        z[0].focus()
-                        return
-        self.action_secao(passo)
-
     def action_botao_acionar(self) -> None:
         if isinstance(self.focused, Button) and not self.focused.disabled:
             self.focused.press()
 
-    def focar_tabela(self) -> None:
-        nav = self.nav_da_aba()
-        if nav is not None:
-            nav.focar_entrada()
-
-    def recarregar_tudo(self) -> None:
-        a = self.aba_widget()
-        if a is not None:
-            a.recarregar()
-
-    @on(TabbedContent.TabActivated)
-    def _aba_mudou(self) -> None:
-        ativa = self.aba_atual()
-        if self._aba_alvo and ativa != self._aba_alvo and time.monotonic() - self._aba_alvo_em < 0.6:
-            self.query_one("#abas", TabbedContent).active = self._aba_alvo
-            return
-        self._aba_alvo = ativa
-        if self.pronto:
-            self.estado.definir("aba", ativa)
-            if self.conectado:
-                self.recarregar_tudo()
-        self.call_after_refresh(self.focar_tabela)
-
     def pop_screen(self):
         r = super().pop_screen()
-        if len(self.screen_stack) == 1:
-            self.call_after_refresh(self.focar_tabela)
+        if len(self.screen_stack) == 1 and self.pronto:
+            self.call_after_refresh(self.focar_area, "centro")
         return r
 
     # ------------------------------------------------------------ chamadas à API
@@ -410,13 +568,7 @@ class OmaSpotifyApp(App[None]):
             if depois:
                 depois(erro is None)
             if erro is None:
-                for cls in (PaginaTocando,):
-                    try:
-                        self.query_one(cls)._poll(forcar=True)
-                    except Exception:
-                        pass
-                if recarregar and self.aba_atual() in ("fila",):
-                    self.recarregar_tudo()
+                self._poll(forcar=True)
         self.em_thread(lambda: func(*args), fim)
 
     def _sem_dispositivo(self, repetir) -> None:
@@ -427,11 +579,125 @@ class OmaSpotifyApp(App[None]):
             if r == "abrir":
                 self.abrir_spotify_pc(repetir)
             elif r == "escolher":
-                self.action_aba("dispositivos")
+                self.navegar({"t": "dispositivos"})
         self.push_screen(SemDispositivo(), fim)
 
+    # ------------------------------------------------------------ biblioteca e início
+    def carregar_biblioteca(self) -> None:
+        if not self.conectado:
+            return
+        c = self.cliente
+
+        def trabalho():
+            saida = []
+            for f in (c.playlists, c.albuns_salvos, c.artistas_seguidos, c.podcasts):
+                try:
+                    saida += f()
+                except ErroSpotify as e:
+                    if e.sem_login:
+                        raise
+            try:
+                n = len(c.curtidas())
+            except ErroSpotify:
+                n = 0
+            return saida, n
+
+        def depois(r, erro):
+            if erro:
+                if erro.sem_login:
+                    self.pedir_login(str(erro))
+                return
+            self.dados_bib, n = r
+            self.query_one(Biblioteca).definir(self.dados_bib, n if n < 100 else 0)
+            self.carregar_inicio()
+        self.em_thread(trabalho, depois)
+
+    def atualizar_curtidas(self) -> None:
+        pass
+
+    def carregar_inicio(self) -> None:
+        a = self.query_one(AreaCentral).atual
+        if not isinstance(a, VistaInicio) or not self.conectado:
+            return
+        c, bib = self.cliente, list(self.dados_bib)
+
+        def trabalho():
+            def seguro(f, *args):
+                try:
+                    return f(*args)
+                except ErroSpotify:
+                    return []
+            recentes, vistos = [], set()
+            for t in seguro(c.recentes):
+                if t.uri not in vistos:
+                    vistos.add(t.uri)
+                    recentes.append(t)
+            tipos = lambda k: [i for i in bib if i.tipo == k]  # noqa: E731
+            rapido = [CURTIDAS] + [i for i in bib if i.tipo in ("playlist", "album")][:7]
+            secoes = [("Tocados recentemente", recentes), ("Seus programas", tipos("show")), ("Seus artistas", tipos("artist")),
+                      ("Suas playlists", tipos("playlist")), ("Seus álbuns", tipos("album")),
+                      ("Mais ouvidos", seguro(c.mais_ouvidos, "artists", "medium_term")[:20])]
+            return {"rapido": rapido, "secoes": secoes}
+
+        async def depois(r, erro):
+            atual = self.query_one(AreaCentral).atual
+            if isinstance(atual, VistaInicio) and r:
+                await atual.mostrar(r)
+        self.em_thread(trabalho, depois)
+
+    # ------------------------------------------------------------ reprodução
+    def _poll(self, forcar: bool = False) -> None:
+        if not self.conectado or self._buscando or (len(self.screen_stack) > 1 and not forcar):
+            return
+        self._buscando = True
+        c = self.cliente
+
+        def trabalho():
+            p = c.player()
+            fila = curtido = None
+            nova = bool(p and p.item and p.item.uri != self._uri)
+            if nova or time.monotonic() - self._fila_em > 15:
+                try:
+                    fila = c.fila()
+                except ErroSpotify:
+                    fila = None
+            if nova and p.item.tipo == "track":
+                try:
+                    curtido = c.curtido([p.item.uri])[0]
+                except (ErroSpotify, IndexError):
+                    curtido = None
+            return p, fila, curtido
+
+        def depois(r, erro):
+            self._buscando = False
+            if erro:
+                if erro.sem_login:
+                    self.pedir_login(str(erro))
+                return
+            p, fila, curtido = r
+            self.player = p
+            if curtido is not None:
+                self.curtido = curtido
+            self._uri = p.item.uri if p and p.item else ""
+            if fila is not None:
+                self._fila_em = time.monotonic()
+                self.fila_atual = fila
+            self._pintar(fila is not None)
+        self.em_thread(trabalho, depois)
+
+    def _pintar(self, com_fila: bool = False) -> None:
+        self.query_one(BarraPlayer).pintar(self.player, self.curtido)
+        self.query_one(PainelAgora).pintar(self.player, self.curtido, self.fila_atual if com_fila else None)
+
+    def _tick(self) -> None:
+        if self.player is not None and self.pronto:
+            try:
+                self.query_one(BarraPlayer).tick(self.player)
+            except Exception:
+                pass
+
     def action_play_pause(self) -> None:
-        if not self.conectado or len(self.screen_stack) > 1 and not isinstance(self.screen, TelaItens):
+        if not self.conectado or isinstance(self.focused, Input):
             return
         c = self.cliente
 
@@ -440,8 +706,69 @@ class OmaSpotifyApp(App[None]):
             (c.pausar if p and p.tocando else c.retomar)()
         self.executar("Play/pausa", alternar, recarregar=False)
 
+    def _precisa_player(self) -> bool:
+        return self.conectado and not isinstance(self.focused, Input)
+
+    def action_proxima(self) -> None:
+        if self._precisa_player():
+            self.executar("Próxima", self.cliente.proxima)
+
+    def action_anterior(self) -> None:
+        if self._precisa_player():
+            self.executar("Anterior", self.cliente.anterior)
+
+    def action_aleatorio(self) -> None:
+        if self._precisa_player() and self.player:
+            novo = not self.player.aleatorio
+            self.player.aleatorio = novo
+            self.executar("Aleatório", self.cliente.aleatorio, novo)
+
+    def action_repetir(self) -> None:
+        if self._precisa_player() and self.player:
+            ordem = ["off", "context", "track"]
+            novo = ordem[(ordem.index(self.player.repetir) + 1) % 3 if self.player.repetir in ordem else 0]
+            self.player.repetir = novo
+            self.executar("Repetir", self.cliente.repetir, novo)
+
+    def action_volume(self, passo: int) -> None:
+        if self._precisa_player() and self.player and self.player.volume is not None:
+            self.player.volume = max(0, min(100, self.player.volume + passo))
+            self.executar("Volume", self.cliente.volume, self.player.volume)
+            self._pintar()
+
+    def action_curtir_tocando(self) -> None:
+        if not self._precisa_player() or not self.player or not self.player.item:
+            return
+        ja, c = self.curtido, self.cliente
+        self.curtido = not ja
+        self.executar("Curtir", c.descurtir if ja else c.curtir, self.player.item.uri,
+                      ok="Removida das curtidas." if ja else "Faixa curtida.")
+        self._pintar()
+
+    def passo_barra(self, barra: str, direcao: int) -> None:
+        if barra == "volume":
+            self.action_volume(5 * direcao)
+        elif self.player and self.player.item:
+            self._buscar(max(0, min(self.player.item.dur_ms, self.player.posicao() + 5000 * direcao)))
+
+    def clique_barra(self, barra: str, fracao: float) -> None:
+        if barra == "volume":
+            if self.player:
+                self.player.volume = round(fracao * 100)
+                self.executar("Volume", self.cliente.volume, self.player.volume)
+                self._pintar()
+        elif self.player and self.player.item:
+            self._buscar(int(fracao * self.player.item.dur_ms))
+
+    def _buscar(self, ms: int) -> None:
+        self.player.progresso_ms, self.player.marca = ms, time.monotonic()
+        self.executar("Buscar posição", self.cliente.buscar_posicao, ms)
+        self._tick()
+
     def tocar_item(self, item: Item, contexto: str = "", uris: list[str] | None = None) -> None:
         c = self.cliente
+        if item.tipo == "curtidas":
+            return self.tocar_uris([i.uri for i in c.curtidas()], None)
         if item.tipo in CONTEXTOS:
             func = lambda: c.tocar(contexto=item.uri)  # noqa: E731
         elif contexto:
@@ -453,8 +780,10 @@ class OmaSpotifyApp(App[None]):
             func = lambda: c.tocar(uris=[item.uri])  # noqa: E731
         self.executar(f"Tocar {item.nome}", func, ok=f"Tocando: {item.nome}")
 
-    def abrir_item(self, item: Item) -> None:
-        self.push_screen(TelaItens(item))
+    def tocar_uris(self, uris: list[str], desde: str | None = None) -> None:
+        c = self.cliente
+        if uris:
+            self.executar("Tocar", lambda: c.tocar(uris=uris[:100], desde=desde), ok="Tocando")
 
     def adicionar_a_playlist(self, item: Item) -> None:
         def listar():
@@ -472,9 +801,19 @@ class OmaSpotifyApp(App[None]):
             self.push_screen(EscolherPlaylist(r), fim)
         self.em_thread(listar, mostrar)
 
+    def nova_playlist(self) -> None:
+        def fim(nome):
+            if nome:
+                self.executar("Criar playlist", self.cliente.criar_playlist, nome, ok=f"Playlist criada: {nome}",
+                              depois=lambda ok: self.carregar_biblioteca())
+        self.push_screen(Pedir("Nova playlist", "", "Dê um nome. Ela nasce privada."), fim)
+
     def transferir(self, d) -> None:
-        self.executar(f"Transferir para {d.nome}", self.cliente.transferir, d.id, ok=f"Tocando em {d.nome}",
-                      depois=lambda ok: self.recarregar_tudo())
+        def depois(ok):
+            a = self.query_one(AreaCentral).atual
+            if isinstance(a, VistaLista):
+                a.recarregar()
+        self.executar(f"Transferir para {d.nome}", self.cliente.transferir, d.id, ok=f"Tocando em {d.nome}", depois=depois)
 
     def abrir_spotify_pc(self, depois=None) -> None:
         """Roda `spotify`, espera ele aparecer como dispositivo e transfere a reprodução."""
@@ -498,7 +837,9 @@ class OmaSpotifyApp(App[None]):
                 self.notify(str(erro), severity="error", timeout=8)
                 return
             self.notify(f"Spotify do PC pronto: {d.nome}")
-            self.recarregar_tudo()
+            a = self.query_one(AreaCentral).atual
+            if isinstance(a, VistaLista):
+                a.recarregar()
             if depois:
                 depois()
         self.em_thread(esperar, fim)
@@ -507,6 +848,12 @@ class OmaSpotifyApp(App[None]):
     async def action_quit(self) -> None:
         self.estado.salvar()
         self.exit()
+
+
+def _mesma(a: dict, b: dict) -> bool:
+    ka = {k: v for k, v in a.items() if k not in ("linha", "per")}
+    kb = {k: v for k, v in b.items() if k not in ("linha", "per")}
+    return ka == kb
 
 
 def main() -> None:
