@@ -33,6 +33,20 @@ def _n(v) -> int:
     return v if isinstance(v, int) and v > 0 else 0
 
 
+def _imagem(imgs) -> str:
+    """A menor imagem com pelo menos 64 px (a capa guardada tem 64x64); sem largura informada, a última da lista."""
+    boas = [i for i in (imgs or []) if isinstance(i, dict) and isinstance(i.get("url"), str) and i.get("url")]
+    if not boas:
+        return ""
+    com_tam = [i for i in boas if isinstance(i.get("width"), int)]
+    grandes = sorted((i for i in com_tam if i["width"] >= 64), key=lambda i: i["width"])
+    if grandes:
+        return grandes[0]["url"]
+    if com_tam:
+        return max(com_tam, key=lambda i: i["width"])["url"]
+    return boas[-1]["url"]
+
+
 def _lista(d, chave: str) -> list:
     """d[chave] como lista de objetos, ignorando nulos (a API manda `null` no lugar de itens e listas)."""
     v = d.get(chave) if isinstance(d, dict) else None
@@ -52,9 +66,10 @@ def item_de(o: dict | None, meu_id: str = "") -> Item | None:
     if not isinstance(o, dict) or not isinstance(o.get("uri"), str) or not o.get("uri"):
         return None
     t = _s(o.get("type")) or "track"
-    base = dict(uri=o["uri"], tipo=t, nome=_s(o.get("name")) or "(sem nome)", id=_s(o.get("id")))
+    alb = o.get("album") if isinstance(o.get("album"), dict) else {}
+    img = _imagem(alb.get("images") if t == "track" else o.get("images"))
+    base = dict(uri=o["uri"], tipo=t, nome=_s(o.get("name")) or "(sem nome)", id=_s(o.get("id")), img=img)
     if t == "track":
-        alb = o.get("album") if isinstance(o.get("album"), dict) else {}
         return Item(**base, sub=_nomes(o.get("artists")), extra=_s(alb.get("name")), dur_ms=_n(o.get("duration_ms")),
                     ano=_s(alb.get("release_date"))[:4])
     if t == "episode":

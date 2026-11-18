@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 
 from oma_spotify.services.modelos import Dispositivo, ErroSpotify, Item, Player
 
-ARTISTAS = [Item(f"spotify:artist:r{n}", "artist", nome, id=f"r{n}") for n, nome in enumerate(
+ARTISTAS = [Item(f"spotify:artist:r{n}", "artist", nome, id=f"r{n}", img=f"demo:artist:r{n}") for n, nome in enumerate(
     ("Cais 7", "Orquestra Exemplo", "Coro Imaginário", "Trio Domínio Público", "Banda Farol", "Maré Alta", "Os Vagalumes",
      "Lua de Papel"), 1)]
 _ART = {a.nome: a for a in ARTISTAS}
@@ -25,7 +25,7 @@ _ALBUNS = [("a1", "Faróis", "Cais 7", "2025", "album"), ("a2", "Sinfonias de Me
            ("a7", "Vagalume Elétrico", "Os Vagalumes", "2012", "album"), ("a8", "Papel Machê", "Lua de Papel", "2021", "album"),
            ("a9", "Cais ao Vivo", "Cais 7", "2023", "album"), ("a10", "Farol Baixo", "Cais 7", "2024", "single"),
            ("a11", "Coletânea do Porto", "Vários artistas", "2015", "appears_on")]
-ALBUNS = [Item(f"spotify:album:{i}", "album", n, a, id=i, ano=y, grupo=g) for i, n, a, y, g in _ALBUNS]
+ALBUNS = [Item(f"spotify:album:{i}", "album", n, a, id=i, ano=y, grupo=g, img=f"demo:album:{i}") for i, n, a, y, g in _ALBUNS]
 _ALB = {a.id: a for a in ALBUNS}
 
 # nome, álbum, duração em segundos
@@ -36,12 +36,14 @@ _FAIXAS = [("Cidade Acesa", "a1", 211), ("Maré de Neon", "a1", 233), ("Farol Ba
            ("Ressaca", "a6", 169), ("Pisca-Pisca", "a7", 272), ("Curto-Circuito", "a7", 208), ("Faísca", "a7", 201),
            ("Origami", "a8", 200), ("Dobradura", "a8", 230), ("Recorte", "a8", 312), ("Cola Branca", "a8", 214),
            ("Tesoura", "a8", 202), ("Colagem", "a8", 187)]
-FAIXAS = [Item(f"spotify:track:t{n}", "track", nome, _ALB[a].sub, _ALB[a].nome, s * 1000, f"t{n}", ano=_ALB[a].ano)
+FAIXAS = [Item(f"spotify:track:t{n}", "track", nome, _ALB[a].sub, _ALB[a].nome, s * 1000, f"t{n}", ano=_ALB[a].ano, img=_ALB[a].img)
           for n, (nome, a, s) in enumerate(_FAIXAS, 1)]
 
-SHOWS = [Item("spotify:show:s1", "show", "Conversa de Exemplo", "Estúdio Fictício", id="s1", desc="Papo semanal inventado."),
-         Item("spotify:show:s2", "show", "Rádio Fictícia", "Coletivo Imaginário", id="s2", desc="Notícias que não aconteceram."),
-         Item("spotify:show:s3", "show", "Café com Dados", "Laboratório Exemplo", id="s3", desc="Números e café.")]
+SHOWS = [Item("spotify:show:s1", "show", "Conversa de Exemplo", "Estúdio Fictício", id="s1", desc="Papo semanal inventado.",
+              img="demo:show:s1"),
+         Item("spotify:show:s2", "show", "Rádio Fictícia", "Coletivo Imaginário", id="s2", desc="Notícias que não aconteceram.",
+              img="demo:show:s2"),
+         Item("spotify:show:s3", "show", "Café com Dados", "Laboratório Exemplo", id="s3", desc="Números e café.", img="demo:show:s3")]
 
 LETRA_CIDADE_ACESA = """[00:00.00]
 [01:20.00]a cidade acende devagar
@@ -232,7 +234,7 @@ class ClienteFalso:
         return "demo"
 
     def playlists(self) -> list[Item]:
-        return [Item(f"spotify:playlist:{k}", "playlist", n, dono, f"{len(t)} faixas", id=k, meu=m, desc=d)
+        return [Item(f"spotify:playlist:{k}", "playlist", n, dono, f"{len(t)} faixas", id=k, meu=m, desc=d, img=f"demo:playlist:{k}")
                 for k, (n, t, m, dono, d) in self.playlists_.items()]
 
     def itens_playlist(self, pid: str) -> list[Item]:
@@ -288,7 +290,7 @@ class ClienteFalso:
     def episodios_do_show(self, sid: str) -> list[Item]:
         show = next((s for s in SHOWS if s.id == sid), SHOWS[0])
         return [Item(f"spotify:episode:{sid}e{n}", "episode", f"Episódio {n} (exemplo)", show.nome, dur_ms=d * 60_000,
-                     id=f"{sid}e{n}", ano=f"2026-11-{18 - n * 2:02d}") for n, d in ((1, 42), (2, 38), (3, 51))]
+                     id=f"{sid}e{n}", ano=f"2026-11-{18 - n * 2:02d}", img=show.img) for n, d in ((1, 42), (2, 38), (3, 51))]
 
     def albuns_do_artista(self, aid: str) -> list[Item]:
         nome = next(a.nome for a in ARTISTAS if a.id == aid)

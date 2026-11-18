@@ -35,6 +35,7 @@ class Item:
     desc: str = ""  # descrição da playlist ou do podcast
     quando: str = ""  # tocada em (ISO 8601), só nas recentes
     colab: bool = False  # playlist colaborativa
+    img: str = ""  # URL da menor imagem da API que serve para a capa (nunca vai para o estado.json)
 
 
 @dataclass(slots=True)
