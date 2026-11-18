@@ -20,19 +20,24 @@ class ErroSpotify(Exception):
         return self.msg
 
 
-@dataclass
+@dataclass(slots=True)
 class Item:
     uri: str
-    tipo: str  # track, album, artist, playlist, show, episode
+    tipo: str  # track, album, artist, playlist, show, episode, curtidas
     nome: str
     sub: str = ""  # artista, dono, editora
     extra: str = ""  # álbum, número de faixas
     dur_ms: int = 0
     id: str = ""
     meu: bool = False  # playlist do próprio usuário (editável)
+    ano: str = ""  # ano de lançamento (faixa e álbum)
+    grupo: str = ""  # álbum: album, single, compilation, appears_on
+    desc: str = ""  # descrição da playlist ou do podcast
+    quando: str = ""  # tocada em (ISO 8601), só nas recentes
+    colab: bool = False  # playlist colaborativa
 
 
-@dataclass
+@dataclass(slots=True)
 class Dispositivo:
     id: str
     nome: str
@@ -51,6 +56,7 @@ class Player:
     volume: int | None = None
     dispositivo: str = ""
     marca: float = field(default_factory=time.monotonic)
+    contexto: str = ""  # URI do contexto (playlist, álbum...) que está tocando
 
     def posicao(self) -> int:
         """Posição estimada agora, interpolada entre as consultas."""
@@ -64,3 +70,9 @@ class Player:
 def mmss(ms: int) -> str:
     s = max(0, int(ms // 1000))
     return f"{s // 60}:{s % 60:02d}"
+
+
+def duracao_longa(ms: int) -> str:
+    """1 h 26 min, 38 min."""
+    m = max(0, int(ms // 60000))
+    return f"{m // 60} h {m % 60} min" if m >= 60 else f"{m} min"

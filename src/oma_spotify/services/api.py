@@ -7,6 +7,7 @@ em /playlists/{id}/items, criação em /me/playlists, busca com limit máximo 10
 from __future__ import annotations
 
 import json
+import re
 import time
 import urllib.error
 import urllib.parse
@@ -23,18 +24,30 @@ def _nomes(lst) -> str:
     return ", ".join(a.get("name", "") for a in (lst or []) if a)
 
 
+def _texto(html: str | None) -> str:
+    """Descrição de playlist vem com entidades HTML e às vezes com tags."""
+    if not html:
+        return ""
+    import html as _h
+    return re.sub(r"<[^>]+>", "", _h.unescape(html)).strip()
+
+
 def item_de(o: dict | None, meu_id: str = "") -> Item | None:
     if not o or not o.get("uri"):
         return None
     t = o.get("type", "track")
     base = dict(uri=o["uri"], tipo=t, nome=o.get("name", "(sem nome)"), id=o.get("id", ""))
     if t == "track":
-        return Item(**base, sub=_nomes(o.get("artists")), extra=(o.get("album") or {}).get("name", ""), dur_ms=o.get("duration_ms", 0))
+        alb = o.get("album") or {}
+        return Item(**base, sub=_nomes(o.get("artists")), extra=alb.get("name", ""), dur_ms=o.get("duration_ms", 0),
+                    ano=(alb.get("release_date") or "")[:4])
     if t == "episode":
-        return Item(**base, sub=(o.get("show") or {}).get("name", ""), dur_ms=o.get("duration_ms", 0))
+        return Item(**base, sub=(o.get("show") or {}).get("name", ""), dur_ms=o.get("duration_ms", 0),
+                    ano=(o.get("release_date") or "")[:10])
     if t == "album":
         n = o.get("total_tracks")
-        return Item(**base, sub=_nomes(o.get("artists")), extra=f"{n} faixas" if n else "")
+        return Item(**base, sub=_nomes(o.get("artists")), extra=f"{n} faixas" if n else "",
+                    ano=(o.get("release_date") or "")[:4], grupo=o.get("album_group") or o.get("album_type") or "")
     if t == "artist":
         return Item(**base)
     if t == "playlist":
@@ -42,9 +55,10 @@ def item_de(o: dict | None, meu_id: str = "") -> Item | None:
         n = cont.get("total") if isinstance(cont, dict) else None
         dono = o.get("owner") or {}
         return Item(**base, sub=dono.get("display_name") or "", extra=f"{n} faixas" if n is not None else "",
-                    meu=bool(meu_id) and dono.get("id") == meu_id)
+                    meu=bool(meu_id) and dono.get("id") == meu_id, desc=_texto(o.get("description")),
+                    colab=bool(o.get("collaborative")))
     if t == "show":
-        return Item(**base, sub=o.get("publisher", ""))
+        return Item(**base, sub=o.get("publisher", ""), desc=_texto(o.get("description")))
     return Item(**base)
 
 
@@ -54,6 +68,7 @@ class ClienteSpotify:
         self.base = base.rstrip("/")
         self._dormir = dormir
         self._eu = ""
+        self._nome = ""
 
     # ------------------------------------------------------------ HTTP
     def _req(self, metodo: str, caminho: str, params: dict | None = None, corpo: dict | None = None):
@@ -112,7 +127,8 @@ class ClienteSpotify:
         dev = r.get("device") or {}
         return Player(item=item_de(r.get("item")), progresso_ms=r.get("progress_ms") or 0, tocando=bool(r.get("is_playing")),
                       aleatorio=bool(r.get("shuffle_state")), repetir=r.get("repeat_state", "off"),
-                      volume=dev.get("volume_percent"), dispositivo=dev.get("name", ""))
+                      volume=dev.get("volume_percent"), dispositivo=dev.get("name", ""),
+                      contexto=(r.get("context") or {}).get("uri", ""))
 
     def tocar(self, contexto: str | None = None, uris: list[str] | None = None, desde: str | None = None,
               device_id: str | None = None) -> None:
@@ -142,8 +158,8 @@ class ClienteSpotify:
     def buscar_posicao(self, ms: int) -> None:
         self._req("PUT", "/me/player/seek", {"position_ms": max(0, int(ms))})
 
-    def volume(self, pct: int) -> None:
-        self._req("PUT", "/me/player/volume", {"volume_percent": max(0, min(100, int(pct)))})
+    def volume(self, pct: int, device_id: str | None = None) -> None:
+        self._req("PUT", "/me/player/volume", {"volume_percent": max(0, min(100, int(pct))), "device_id": device_id})
 
     def aleatorio(self, ligado: bool) -> None:
         self._req("PUT", "/me/player/shuffle", {"state": "true" if ligado else "false"})
@@ -169,8 +185,13 @@ class ClienteSpotify:
     # ------------------------------------------------------------ biblioteca
     def _meu_id(self) -> str:
         if not self._eu:
-            self._eu = (self._req("GET", "/me") or {}).get("id", "")
+            r = self._req("GET", "/me") or {}
+            self._eu, self._nome = r.get("id", ""), r.get("display_name") or r.get("id", "")
         return self._eu
+
+    def nome_usuario(self) -> str:
+        self._meu_id()
+        return self._nome
 
     def playlists(self) -> list[Item]:
         eu = self._meu_id()
@@ -193,6 +214,14 @@ class ClienteSpotify:
 
     def remover_da_playlist(self, pid: str, uri: str) -> None:
         self._req("DELETE", f"/playlists/{pid}/items", corpo={"items": [{"uri": uri}]})
+
+    def inserir_na_playlist(self, pid: str, uris: list[str], posicao: int) -> None:
+        """Devolve faixas a uma posição (desfazer remoção)."""
+        self._req("POST", f"/playlists/{pid}/items", corpo={"uris": uris[:100], "position": max(0, int(posicao))})
+
+    def mover_na_playlist(self, pid: str, inicio: int, antes: int, n: int = 1) -> None:
+        """Reordena: n faixas a partir de `inicio` vão para antes da posição `antes` (índices da playlist atual)."""
+        self._req("PUT", f"/playlists/{pid}/items", corpo={"range_start": inicio, "insert_before": antes, "range_length": n})
 
     def curtidas(self) -> list[Item]:
         return [i for i in (item_de(x.get("track")) for x in self._paginas("/me/tracks", {}, maximo=100)) if i]
@@ -219,7 +248,7 @@ class ClienteSpotify:
         return [i for i in (item_de(x) for x in self._paginas(f"/shows/{sid}/episodes", {}, maximo=100)) if i]
 
     def albuns_do_artista(self, aid: str) -> list[Item]:
-        r = self._paginas(f"/artists/{aid}/albums", {"include_groups": "album,single"}, maximo=50)
+        r = self._paginas(f"/artists/{aid}/albums", {"include_groups": "album,single,appears_on"}, maximo=50)
         return [i for i in (item_de(a) for a in r) if i]
 
     def curtido(self, uris: list[str]) -> list[bool]:
@@ -235,14 +264,23 @@ class ClienteSpotify:
         self._req("DELETE", "/me/library", {"uris": uri})
 
     # ------------------------------------------------------------ busca e histórico
-    def buscar(self, q: str) -> dict[str, list[Item]]:
-        r = self._req("GET", "/search", {"q": q, "type": ",".join(TIPOS_BUSCA), "limit": 10}) or {}
+    def buscar(self, q: str, tipos=TIPOS_BUSCA, offset: int = 0, limite: int = 10) -> dict[str, list[Item]]:
+        """No máximo 10 por tipo e por página (limite da API desde fevereiro de 2026)."""
+        tipos = tuple(tipos)
+        r = self._req("GET", "/search", {"q": q, "type": ",".join(tipos), "limit": min(10, limite),
+                                         "offset": offset or None}) or {}
         eu = self._meu_id()
-        return {t: [i for i in (item_de(x, eu) for x in (r.get(t + "s") or {}).get("items", []) if x) if i] for t in TIPOS_BUSCA}
+        return {t: [i for i in (item_de(x, eu) for x in (r.get(t + "s") or {}).get("items", []) if x) if i] for t in tipos}
 
     def recentes(self) -> list[Item]:
         r = self._req("GET", "/me/player/recently-played", {"limit": 50}) or {}
-        return [i for i in (item_de(x.get("track")) for x in r.get("items", [])) if i]
+        saida = []
+        for x in r.get("items", []):
+            i = item_de(x.get("track"))
+            if i:
+                i.quando = x.get("played_at", "")
+                saida.append(i)
+        return saida
 
     def mais_ouvidos(self, tipo: str = "tracks", periodo: str = "medium_term") -> list[Item]:
         r = self._req("GET", f"/me/top/{tipo}", {"limit": 50, "time_range": periodo}) or {}
