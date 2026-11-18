@@ -68,6 +68,7 @@ class Palco(Horizontal):
         self.border_subtitle = "z sai do zoom"
         self.pintar()
         self.pintar_letra()
+        self.call_after_refresh(self.focar_entrada)
 
     def on_resize(self) -> None:
         if not self._pronto:
@@ -81,6 +82,8 @@ class Palco(Horizontal):
         self.pintar()
 
     def focar_entrada(self) -> None:
+        if not self._pronto or not self.is_attached:
+            return  # o palco já está saindo (z de novo antes de terminar de abrir)
         l = self.query_one("#pc-letra" if self.aba == "letra" else "#pc-fila", Lista)
         if l.display:
             l.focus()
@@ -160,6 +163,8 @@ class Palco(Horizontal):
         self.query_one("#pc-aviso").display = self.aba == "letra" and not tem
 
     def alt_horizontal(self, passo: int) -> None:
+        if not self._pronto:
+            return
         lt = self.app.letra
         if lt is not None and lt.vazia:
             return

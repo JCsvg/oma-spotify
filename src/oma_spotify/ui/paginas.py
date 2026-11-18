@@ -274,6 +274,7 @@ class PaginaInicio(Pagina):
         return ([CURTIDAS] + fx + resto)[:6]
 
     def mostrar(self, d: dict) -> None:
+        primeira = not self.dados
         self.dados = d
         # quem tinha o foco num cartão volta para o mesmo lugar depois de remontar
         foco = self.app.focused
@@ -290,6 +291,8 @@ class PaginaInicio(Pagina):
         if volta is not None and novos[volta[0]]:
             alvo = novos[volta[0]][min(volta[1], len(novos[volta[0]]) - 1)]
             self.call_after_refresh(alvo.focus)
+        elif primeira and novos["atalhos"] and self.app.nome_janela(foco) in ("principal", ""):
+            self.call_after_refresh(novos["atalhos"][0].focus)  # o início abre com o foco no primeiro atalho
         rec = self._recentes()
         for sid, vazio in (("#sec-repeat", not d["repeat"]), ("#repeat", not d["repeat"]), ("#sec-podcasts", not d["podcasts"]),
                            ("#podcasts", not d["podcasts"]), ("#sec-recentes", not rec), ("#recentes", not rec)):
@@ -367,10 +370,11 @@ class Cabecalho(Horizontal):
     Cabecalho .acoes Botao { margin-right: 1; }
     """
 
-    def __init__(self, item: Item, redonda: bool = False, **kw) -> None:
+    def __init__(self, item: Item | None, redonda: bool = False, **kw) -> None:
         super().__init__(**kw)
-        self.item, self.redonda = item, redonda
-        self.desc_txt = item.desc
+        self.item = item or Item("", "playlist", "")
+        self.redonda = redonda
+        self.desc_txt = self.item.desc or ""
         self.meta = Text("")
 
     def compose(self) -> ComposeResult:
@@ -425,7 +429,7 @@ class PaginaColecao(Pagina):
 
     def __init__(self, vista: dict, **kw) -> None:
         super().__init__(vista, **kw)
-        if vista["t"] == "curtidas":
+        if vista["t"] == "curtidas" or self.item is None:
             self.item = Item(CURTIDAS.uri, "curtidas", "Músicas Curtidas", "playlist")
         self.todos: list[Item] = []
         self.curtidos: set[str] = set()
@@ -503,7 +507,14 @@ class PaginaColecao(Pagina):
         except NoMatches:
             return
         w = l.scrollable_content_region.width or (self.size.width - 1)
-        self.query_one("#cab-tabela", Static).update(self.cols.cabecalho(w))
+        cab = self.query_one("#cab-tabela", Static)
+        if getattr(self, "erro_txt", ""):
+            cab.update(Text(self.erro_txt, style=self.app.cor("warning")))
+        elif self.carregado and not l.itens:
+            cab.update(Text("Nada por aqui ainda." if not self.query_one("#filtro", Input).value else "Nada casou com o filtro.",
+                            style=self.app.cor("mudo")))
+        else:
+            cab.update(self.cols.cabecalho(w))
 
     def _meta_alheia(self) -> None:
         i = self.item
@@ -551,11 +562,11 @@ class PaginaColecao(Pagina):
 
         def depois(r, erro):
             if erro:
-                self.todos = []
-                self.query_one("#cab-tabela", Static).update(Text(str(erro), style=self.app.cor("warning")))
+                self.todos, self.erro_txt = [], str(erro)
                 if erro.sem_login:
                     self.app.pedir_login(str(erro))
             else:
+                self.erro_txt = ""
                 self.todos, vivos, self.salvo = r
                 self.curtidos.clear()
                 self.curtidos |= vivos
@@ -600,9 +611,6 @@ class PaginaColecao(Pagina):
         if self.query("#salvar"):
             self.query_one("#salvar", Botao).label = ic("curtida") if self.salvo else ic("nao_curtida")
             self.query_one("#salvar", Botao).set_class(self.salvo, "ligado")
-        if not itens:
-            msg = "Nada por aqui ainda." if not self.query_one("#filtro", Input).value else "Nada casou com o filtro."
-            self.query_one("#cab-tabela", Static).update(Text(msg, style=a.cor("mudo")))
 
     def _linha(self, it, n, e):
         return self.cols.linha(it, n, e)

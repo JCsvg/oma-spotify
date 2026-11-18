@@ -16,10 +16,49 @@ def serializar(i: Item) -> dict:
 
 
 def item_de_dict(d: dict) -> Item | None:
+    """Item salvo no histórico ou na sua fila. Campos estranhos são ignorados; texto nulo vira vazio."""
+    if not isinstance(d, dict):
+        return None
+    campos = {k: v for k, v in d.items() if k in Item.__dataclass_fields__}
+    for k in ("sub", "extra", "id", "ano", "grupo", "desc", "quando"):
+        if k in campos and not isinstance(campos[k], str):
+            campos[k] = ""
+    if "dur_ms" in campos and not isinstance(campos["dur_ms"], int):
+        campos["dur_ms"] = 0
+    if not isinstance(campos.get("uri"), str) or not isinstance(campos.get("tipo"), str):
+        return None
+    if not isinstance(campos.get("nome"), str):
+        campos["nome"] = "(sem nome)"
     try:
-        return Item(**{k: v for k, v in d.items() if k in Item.__dataclass_fields__})
+        return Item(**campos)
     except TypeError:
         return None
+
+
+TIPOS_ITEM = ("playlist", "album", "artist", "show")
+PERIODOS_TOP = ("short_term", "medium_term", "long_term")
+
+
+def vista_valida(v) -> dict | None:
+    """Confere uma página vinda do histórico salvo (inclusive de versões antigas). Inválida vira None."""
+    if not isinstance(v, dict):
+        return None
+    t = v.get("t")
+    if t in ("inicio", "curtidas", "recentes", "config"):
+        return v
+    if t == "top":
+        return {**v, "tipo": v.get("tipo") if v.get("tipo") in ("tracks", "artists") else "tracks",
+                "per": v.get("per") if v.get("per") in PERIODOS_TOP else "short_term"}
+    if t == "busca":
+        q = v.get("q")
+        return v if isinstance(q, str) and q.strip() else None
+    if t == "item":
+        d = v.get("item")
+        it = item_de_dict(d) if isinstance(d, dict) else None
+        if it is None or it.tipo not in TIPOS_ITEM or not isinstance(it.uri, str) or not it.uri:
+            return None
+        return v
+    return None  # páginas que deixaram de existir (fila, dispositivos da 0.3.0)
 
 
 def titulo_vista(v: dict, curto: bool = False) -> str:
@@ -44,6 +83,7 @@ class Principal(Vertical):
         from oma_spotify.ui import paginas
         if self.pagina is not None:
             self.pagina.remove()
+        vista = vista_valida(vista) or {"t": "inicio"}
         self.vista = vista
         t = vista["t"]
         if t == "inicio":

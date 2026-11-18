@@ -21,7 +21,22 @@ TIPOS_BUSCA = ("track", "album", "artist", "playlist", "show")
 
 
 def _nomes(lst) -> str:
-    return ", ".join(a.get("name", "") for a in (lst or []) if a)
+    return ", ".join(a.get("name") or "" for a in (lst or []) if isinstance(a, dict) and a.get("name"))
+
+
+def _s(v) -> str:
+    """Campo de texto que a API pode mandar nulo."""
+    return v if isinstance(v, str) else ""
+
+
+def _n(v) -> int:
+    return v if isinstance(v, int) and v > 0 else 0
+
+
+def _lista(d, chave: str) -> list:
+    """d[chave] como lista de objetos, ignorando nulos (a API manda `null` no lugar de itens e listas)."""
+    v = d.get(chave) if isinstance(d, dict) else None
+    return [x for x in v if isinstance(x, dict)] if isinstance(v, list) else []
 
 
 def _texto(html: str | None) -> str:
@@ -33,32 +48,33 @@ def _texto(html: str | None) -> str:
 
 
 def item_de(o: dict | None, meu_id: str = "") -> Item | None:
-    if not o or not o.get("uri"):
+    """Converte um objeto da API em Item. Campos nulos ou ausentes viram texto vazio ou zero, nunca None."""
+    if not isinstance(o, dict) or not isinstance(o.get("uri"), str) or not o.get("uri"):
         return None
-    t = o.get("type", "track")
-    base = dict(uri=o["uri"], tipo=t, nome=o.get("name", "(sem nome)"), id=o.get("id", ""))
+    t = _s(o.get("type")) or "track"
+    base = dict(uri=o["uri"], tipo=t, nome=_s(o.get("name")) or "(sem nome)", id=_s(o.get("id")))
     if t == "track":
-        alb = o.get("album") or {}
-        return Item(**base, sub=_nomes(o.get("artists")), extra=alb.get("name", ""), dur_ms=o.get("duration_ms", 0),
-                    ano=(alb.get("release_date") or "")[:4])
+        alb = o.get("album") if isinstance(o.get("album"), dict) else {}
+        return Item(**base, sub=_nomes(o.get("artists")), extra=_s(alb.get("name")), dur_ms=_n(o.get("duration_ms")),
+                    ano=_s(alb.get("release_date"))[:4])
     if t == "episode":
-        return Item(**base, sub=(o.get("show") or {}).get("name", ""), dur_ms=o.get("duration_ms", 0),
-                    ano=(o.get("release_date") or "")[:10])
+        show = o.get("show") if isinstance(o.get("show"), dict) else {}
+        return Item(**base, sub=_s(show.get("name")), dur_ms=_n(o.get("duration_ms")), ano=_s(o.get("release_date"))[:10])
     if t == "album":
         n = o.get("total_tracks")
         return Item(**base, sub=_nomes(o.get("artists")), extra=f"{n} faixas" if n else "",
-                    ano=(o.get("release_date") or "")[:4], grupo=o.get("album_group") or o.get("album_type") or "")
+                    ano=_s(o.get("release_date"))[:4], grupo=_s(o.get("album_group")) or _s(o.get("album_type")))
     if t == "artist":
         return Item(**base)
     if t == "playlist":
         cont = o.get("items") or o.get("tracks") or {}
         n = cont.get("total") if isinstance(cont, dict) else None
-        dono = o.get("owner") or {}
-        return Item(**base, sub=dono.get("display_name") or "", extra=f"{n} faixas" if n is not None else "",
-                    meu=bool(meu_id) and dono.get("id") == meu_id, desc=_texto(o.get("description")),
+        dono = o.get("owner") if isinstance(o.get("owner"), dict) else {}
+        return Item(**base, sub=_s(dono.get("display_name")), extra=f"{n} faixas" if isinstance(n, int) else "",
+                    meu=bool(meu_id) and dono.get("id") == meu_id, desc=_texto(_s(o.get("description"))),
                     colab=bool(o.get("collaborative")))
     if t == "show":
-        return Item(**base, sub=o.get("publisher", ""), desc=_texto(o.get("description")))
+        return Item(**base, sub=_s(o.get("publisher")), desc=_texto(_s(o.get("description"))))
     return Item(**base)
 
 
@@ -112,9 +128,9 @@ class ClienteSpotify:
         saida, off = [], 0
         while off < maximo:
             r = self._req("GET", caminho, {**params, "limit": 50, "offset": off}) or {}
-            lote = r.get(chave, []) if isinstance(r, dict) else []
+            lote = _lista(r, chave)
             saida += lote
-            if not r.get("next") or not lote:
+            if not isinstance(r, dict) or not r.get("next") or not lote:
                 break
             off += 50
         return saida
@@ -124,11 +140,14 @@ class ClienteSpotify:
         r = self._req("GET", "/me/player", {"additional_types": "track,episode"})
         if not r:
             return None
-        dev = r.get("device") or {}
-        return Player(item=item_de(r.get("item")), progresso_ms=r.get("progress_ms") or 0, tocando=bool(r.get("is_playing")),
-                      aleatorio=bool(r.get("shuffle_state")), repetir=r.get("repeat_state", "off"),
-                      volume=dev.get("volume_percent"), dispositivo=dev.get("name", ""),
-                      contexto=(r.get("context") or {}).get("uri", ""))
+        if not isinstance(r, dict):
+            return None
+        dev = r.get("device") if isinstance(r.get("device"), dict) else {}
+        ctx = r.get("context") if isinstance(r.get("context"), dict) else {}
+        vol = dev.get("volume_percent")
+        return Player(item=item_de(r.get("item")), progresso_ms=_n(r.get("progress_ms")), tocando=bool(r.get("is_playing")),
+                      aleatorio=bool(r.get("shuffle_state")), repetir=_s(r.get("repeat_state")) or "off",
+                      volume=vol if isinstance(vol, int) else None, dispositivo=_s(dev.get("name")), contexto=_s(ctx.get("uri")))
 
     def tocar(self, contexto: str | None = None, uris: list[str] | None = None, desde: str | None = None,
               device_id: str | None = None) -> None:
@@ -169,15 +188,16 @@ class ClienteSpotify:
 
     def fila(self) -> list[Item]:
         r = self._req("GET", "/me/player/queue") or {}
-        return [i for i in (item_de(x) for x in r.get("queue", [])) if i]
+        return [i for i in (item_de(x) for x in _lista(r, "queue")) if i]
 
     def enfileirar(self, uri: str) -> None:
         self._req("POST", "/me/player/queue", {"uri": uri})
 
     def dispositivos(self) -> list[Dispositivo]:
         r = self._req("GET", "/me/player/devices") or {}
-        return [Dispositivo(d["id"], d.get("name", ""), d.get("type", ""), bool(d.get("is_active")), d.get("volume_percent"))
-                for d in r.get("devices", []) if d.get("id")]
+        return [Dispositivo(d["id"], _s(d.get("name")) or "aparelho", _s(d.get("type")), bool(d.get("is_active")),
+                            d.get("volume_percent") if isinstance(d.get("volume_percent"), int) else None)
+                for d in (r.get("devices") or []) if isinstance(d, dict) and d.get("id")]
 
     def transferir(self, device_id: str, tocar: bool = True) -> None:
         self._req("PUT", "/me/player", corpo={"device_ids": [device_id], "play": tocar})
@@ -186,7 +206,8 @@ class ClienteSpotify:
     def _meu_id(self) -> str:
         if not self._eu:
             r = self._req("GET", "/me") or {}
-            self._eu, self._nome = r.get("id", ""), r.get("display_name") or r.get("id", "")
+            self._eu = _s(r.get("id")) if isinstance(r, dict) else ""
+            self._nome = (_s(r.get("display_name")) if isinstance(r, dict) else "") or self._eu
         return self._eu
 
     def nome_usuario(self) -> str:
@@ -231,7 +252,7 @@ class ClienteSpotify:
 
     def artistas_seguidos(self) -> list[Item]:
         r = self._req("GET", "/me/following", {"type": "artist", "limit": 50}) or {}
-        return [i for i in (item_de(a) for a in (r.get("artists") or {}).get("items", [])) if i]
+        return [i for i in (item_de(a) for a in _lista(r.get("artists") if isinstance(r, dict) else None, "items")) if i]
 
     def podcasts(self) -> list[Item]:
         return [i for i in (item_de(x.get("show")) for x in self._paginas("/me/shows", {}, maximo=100)) if i]
@@ -255,7 +276,7 @@ class ClienteSpotify:
         if not uris:
             return []
         r = self._req("GET", "/me/library/contains", {"uris": ",".join(uris[:40])})
-        return [bool(x) for x in (r or [])]
+        return [bool(x) for x in r] if isinstance(r, list) else []
 
     def curtir(self, uri: str) -> None:
         self._req("PUT", "/me/library", {"uris": uri})
@@ -270,18 +291,19 @@ class ClienteSpotify:
         r = self._req("GET", "/search", {"q": q, "type": ",".join(tipos), "limit": min(10, limite),
                                          "offset": offset or None}) or {}
         eu = self._meu_id()
-        return {t: [i for i in (item_de(x, eu) for x in (r.get(t + "s") or {}).get("items", []) if x) if i] for t in tipos}
+        return {t: [i for i in (item_de(x, eu) for x in _lista(r.get(t + "s") if isinstance(r, dict) else None, "items")) if i]
+                for t in tipos}
 
     def recentes(self) -> list[Item]:
         r = self._req("GET", "/me/player/recently-played", {"limit": 50}) or {}
         saida = []
-        for x in r.get("items", []):
+        for x in _lista(r, "items"):
             i = item_de(x.get("track"))
             if i:
-                i.quando = x.get("played_at", "")
+                i.quando = _s(x.get("played_at"))
                 saida.append(i)
         return saida
 
     def mais_ouvidos(self, tipo: str = "tracks", periodo: str = "medium_term") -> list[Item]:
         r = self._req("GET", f"/me/top/{tipo}", {"limit": 50, "time_range": periodo}) or {}
-        return [i for i in (item_de(x) for x in r.get("items", [])) if i]
+        return [i for i in (item_de(x) for x in _lista(r, "items")) if i]

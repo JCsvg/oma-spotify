@@ -238,7 +238,10 @@ class Lista(ScrollView, can_focus=True):
         chave = (i, est)
         textos = self._cache.get(chave)
         if textos is None:
-            textos = self.render_item(self.itens[i], i, est)
+            try:
+                textos = self.render_item(self.itens[i], i, est)
+            except Exception:  # um item estranho vira uma linha em branco, não derruba a lista
+                textos = [Text("")]
             if len(self._cache) > 300:
                 self._cache.clear()
             self._cache[chave] = textos

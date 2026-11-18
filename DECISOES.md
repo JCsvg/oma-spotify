@@ -150,3 +150,9 @@ Medido com `--demo` num pseudo-terminal 180x48, lendo `VmRSS`: 0.3.0 com 48 a 51
 ### Capturas
 
 Geradas pelo próprio Textual (`save_screenshot`) e convertidas com `rsvg-convert`, trocando a fonte do SVG pela JetBrainsMono Nerd Font e marcando `xml:space="preserve"` (sem isso o rsvg come o espaço do começo de cada trecho e as colunas se juntam). Nenhuma captura da tela pessoal do JC.
+
+## 14. 0.4.1: o app quebrava ao abrir com a conta real (bug relatado pelo coordenador)
+
+Causa: o `estado.json` da 0.3.0 guardava no histórico páginas que deixaram de existir (Dispositivos, Fila). A 0.4.0 restaurava a página aberta e caía na página de playlist sem item (`AttributeError: 'NoneType' object has no attribute 'desc'`). O demo passava porque começa sem contexto e com dados completos.
+
+Correção (decisão do agente): o histórico salvo passa por `vista_valida`; página que sumiu ou veio quebrada sai, e se era a página aberta o app abre o início. A sua fila e as larguras salvas também são conferidas. A API passou a tratar campos nulos (`name`, `artists`, `album`, `owner`, `description`, `duration_ms`, `device`, `repeat_state`, listas `null` e itens `null` dentro das listas) como texto vazio ou zero. Por segurança, um item que mesmo assim falhe ao desenhar vira uma linha em branco, e um erro ao mostrar dados vira aviso em vez de derrubar o app. `tests/integration/test_api_real.py` roda o app com o cliente real contra o servidor falso: dados parciais, campos nulos, 403 e 404 nos endpoints do modo de desenvolvimento, conta vazia e o contexto da 0.3.0.

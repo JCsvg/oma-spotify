@@ -30,7 +30,7 @@ from oma_spotify.ui import icones
 from oma_spotify.ui.biblioteca import CURTIDAS, Biblioteca
 from oma_spotify.ui.lista import Lista
 from oma_spotify.ui.player import Player
-from oma_spotify.ui.principal import Principal, item_de_dict, serializar, titulo_vista
+from oma_spotify.ui.principal import Principal, item_de_dict, serializar, titulo_vista, vista_valida
 from oma_spotify.ui.rodape import Divisa, Rodape
 from oma_spotify.ui.tocando import FilaLetra, Tocando
 from oma_spotify.ui.topo import Topo
@@ -262,11 +262,13 @@ class OmaSpotifyApp(App[None]):
         self.pref_bib = bool(s.get("pref_bib", True))
         self.pref_dir = bool(s.get("pref_dir", True))
         larg = s.get("larguras") if isinstance(s.get("larguras"), dict) else {}
+        larg = {k: v for k, v in larg.items() if k in ("bib", "dir") and isinstance(v, int)}
         for chave, wid in (("bib", "#bib"), ("dir", "#direita")):
             if isinstance(larg.get(chave), int):
                 self.query_one(wid).styles.width = max(24, min(60, larg[chave]))
         self._larguras = dict(larg)
-        self.minha_fila = [i for i in (item_de_dict(d) for d in s.get("minha_fila", []) if isinstance(d, dict)) if i][:MAX_MINHA_FILA]
+        fila = s.get("minha_fila") if isinstance(s.get("minha_fila"), list) else []
+        self.minha_fila = [i for i in (item_de_dict(d) for d in fila) if i and i.tipo in ("track", "episode")][:MAX_MINHA_FILA]
         try:
             self.query_one(Biblioteca).restaurar(s.get("bib", {}))
             self.query_one(FilaLetra).aba = "letra" if s.get("aba_fila") == "letra" else "fila"
@@ -294,11 +296,25 @@ class OmaSpotifyApp(App[None]):
     def _entrar_no_app(self) -> None:
         self.carregar_biblioteca()
         self.carregar_dispositivos()
-        hist = [v for v in self.salvo.get("hist", []) if isinstance(v, dict) and "t" in v]
+        salvo_hist = self.salvo.get("hist") if isinstance(self.salvo.get("hist"), list) else []
+        hist = [v for v in (vista_valida(x) for x in salvo_hist) if v]  # páginas antigas ou quebradas saem
         if hist and not self.historico:
             self.historico = hist[-30:]
-            self.pos = max(0, min(int(self.salvo.get("pos", len(self.historico) - 1)), len(self.historico) - 1))
-            self._mostrar_vista(self.historico[self.pos], foco=False)
+            try:
+                pos = int(self.salvo.get("pos", len(self.historico) - 1))
+            except (TypeError, ValueError):
+                pos = len(self.historico) - 1
+            atual_valida = 0 <= pos < len(salvo_hist) and vista_valida(salvo_hist[pos]) is not None
+            if len(hist) != len(salvo_hist):
+                # a página aberta pode ter sumido (Dispositivos e Fila da 0.3.0): abre o início
+                inicios = [n for n, v in enumerate(self.historico) if v["t"] == "inicio"]
+                pos = len(self.historico) - 1 if atual_valida else (inicios[-1] if inicios else -1)
+            if pos < 0:
+                self.pos = len(self.historico) - 1
+                self.navegar({"t": "inicio"}, foco=False)
+            else:
+                self.pos = max(0, min(pos, len(self.historico) - 1))
+                self._mostrar_vista(self.historico[self.pos], foco=False)
         elif not self.historico:
             self.navegar({"t": "inicio"}, foco=False)
         self._poll(forcar=True)
@@ -425,8 +441,7 @@ class OmaSpotifyApp(App[None]):
         self.zoom = "palco"
         self.ajustar()
         p = Palco(id="palco", classes="janela")
-        self.query_one("#corpo").mount(p)
-        self.call_after_refresh(p.focar_entrada)
+        self.query_one("#corpo").mount(p)  # o palco pega o foco quando termina de montar
         self.carregar_letra()
         self.atualizar_trilha()
 
@@ -434,6 +449,7 @@ class OmaSpotifyApp(App[None]):
         era = self.zoom
         self.zoom = ""
         for p in self.query("#palco"):
+            p._pronto = False  # chamadas que chegarem durante a remoção são ignoradas
             p.remove()
         self.ajustar()
         self.atualizar_trilha()
@@ -818,10 +834,26 @@ class OmaSpotifyApp(App[None]):
             if not self.is_running:
                 return  # o app fechou enquanto a chamada rodava
             try:
-                self.call_from_thread(depois, r, erro)
+                self.call_from_thread(self._depois_seguro, depois, r, erro)
             except Exception:
                 pass
         self._exec.submit(trabalho)
+
+    def _no_palco(self, metodo: str) -> None:
+        from textual.css.query import NoMatches
+        for p in self.query("#palco"):
+            try:
+                getattr(p, metodo)()
+            except NoMatches:
+                pass  # o palco está saindo
+
+    def _depois_seguro(self, depois, r, erro) -> None:
+        """Um dado inesperado da API não derruba o app: vira aviso."""
+        try:
+            depois(r, erro)
+        except Exception:
+            self.notify("Algo veio diferente do esperado do Spotify; parte da tela pode ficar vazia.", severity="warning",
+                        timeout=6)
 
     def executar(self, descricao: str, func, *args, ok: str = "", depois=None, recarregar: bool = True) -> None:
         def fim(_, erro) -> None:
@@ -1078,8 +1110,7 @@ class OmaSpotifyApp(App[None]):
         self.query_one(Tocando).pintar(self.player, self.curtido)
         if com_fila:
             self.query_one(FilaLetra).pintar_fila()
-            for p in self.query("#palco"):
-                p.pintar()
+            self._no_palco("pintar")
 
     def _tick(self) -> None:
         if self.player is None or not self.pronto:
@@ -1087,8 +1118,7 @@ class OmaSpotifyApp(App[None]):
         try:
             self.query_one(Player).tick(self.player)
             self.query_one(FilaLetra).tick()
-            for p in self.query("#palco"):
-                p.tick()
+            self._no_palco("tick")
         except Exception:
             pass
         self._entregar_se_preciso()
@@ -1771,8 +1801,7 @@ class OmaSpotifyApp(App[None]):
 
     def _pintar_letra(self) -> None:
         self.query_one(FilaLetra).pintar_letra()
-        for p in self.query("#palco"):
-            p.pintar_letra()
+        self._no_palco("pintar_letra")
 
     # ------------------------------------------------------------ saída
     async def action_quit(self) -> None:
